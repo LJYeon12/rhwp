@@ -2,7 +2,7 @@
 
 - Issue: [#7084](https://github.com/edwardkim/rhwp/issues/7084)
 - 작성일: 2026-09-13
-- 상태: **2026-09-13 승인 후 A 절편 구현·집중 검증 완료. 다음은 B Studio 연결.**
+- 상태: **2026-09-13 A 완료. B 측정 준비부 구현·집중 검증, 재조판/paint 연결은 진행 중.**
 - 수행계획: [승인된 R1](task_m100_7084.md)
 - 원인 근거: [Stage 1](../working/task_m100_7084_stage1.md), 보존 commit `7e8b74cdd`.
 - 제품 조사 기준: `ad6174255e6aabfaa48131f3f5f2f6287a93e48a`.
@@ -184,7 +184,10 @@ MCP 접속정보와 로컬 상용 폰트 bytes는 Git에 넣지 않는다.
 위 승인 요청은 계획 작성 시점의 기록이다. 승인 후 A 절편을 구현했으며,
 제품/테스트 `cccc33a36`에서 집중 15건·포맷·native Clippy를 통과했다.
 구현 범위·명령·첫 검사 오류 정정·미검증 경계는 [Stage 2](../working/task_m100_7084_stage2.md)에 기록했다.
-B의 실제 Studio 측정/paint 연결과 C의 통합 게이트는 아직 수행하지 않았다.
+B의 측정 준비부는 `eef7b3293`에서 집중 10건·TypeScript 검사를 통과했다.
+[Stage 3](../working/task_m100_7084_stage3.md)에 backend 공통 cache와 축소 장평 단위의
+남은 연결 경계를 기록했다. 준비부는 아직 제품 세션에서 호출하지 않는다.
+B의 실제 Studio 재조판/paint 연결과 C의 통합 게이트는 아직 완료하지 않았다.
 원격 push·PR·GitHub 댓글은 수행하지 않았다.
 
 ## 용어
