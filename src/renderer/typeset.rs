@@ -19754,6 +19754,65 @@ impl TypesetEngine {
             .map(|a| a.width)
             .unwrap_or(st.layout.body_area.width);
         let fmt = self.format_paragraph(para, composed, styles, Some(host_col_w));
+        // 완전한 저장 줄 계약은 표별 높이를 합산하지 않고, 같은 pen/end를 배치에도 전달한다.
+        if !st.profile.session_edited()
+            && (st.profile.hwp5_stored_pagination_layout() || st.profile.hwpx_stored_layout())
+            && st.side_wrap_exclusions.is_empty()
+        {
+            if let Some(lines) = super::composer::stored_tac_lines(para) {
+                let origin = st.current_height
+                    + if st.current_height < 1.0 {
+                        0.0
+                    } else {
+                        fmt.spacing_before
+                    };
+                let measured_fits = lines.iter().all(|line| {
+                    let Some(Control::Table(table)) = para.controls.get(line.control) else {
+                        return false;
+                    };
+                    measured_tables
+                        .iter()
+                        .find(|m| m.para_index == para_idx && m.control_index == line.control)
+                        .is_some_and(|m| {
+                            (m.total_height - hwpunit_to_px(table.common.height as i32, self.dpi))
+                                .abs()
+                                <= 0.5
+                        })
+                });
+                let fits = lines.iter().all(|line| {
+                    origin
+                        + hwpunit_to_px(line.occupied_end.max(line.end), self.dpi)
+                        + fmt.spacing_after
+                        <= st.available_height()
+                });
+                if measured_fits && fits {
+                    for line in &lines {
+                        let end = origin
+                            + hwpunit_to_px(line.end, self.dpi)
+                            + if line.control == lines.last().unwrap().control {
+                                fmt.spacing_after
+                            } else {
+                                0.0
+                            };
+                        st.inline_placements.insert(
+                            (para_idx, line.control),
+                            super::float_placement::InlineBoxPlacement {
+                                x: 0.0,
+                                y: origin + hwpunit_to_px(line.top, self.dpi),
+                                clearance: 0.0,
+                                advance_end: Some(end),
+                            },
+                        );
+                        st.current_items.push(PageItem::Table {
+                            para_index: para_idx,
+                            control_index: line.control,
+                        });
+                        st.current_height = end;
+                    }
+                    return;
+                }
+            }
+        }
         // TAC 표 카운트 및 플러시 판단
         let tac_count = para
             .controls

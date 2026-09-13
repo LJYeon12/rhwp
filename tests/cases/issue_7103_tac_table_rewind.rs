@@ -1,10 +1,6 @@
-//! [#7103] 같은 문단에 연속으로 붙은 글자처럼 취급(TAC) 표가 저장 LINE_SEG 간격을
-//! 음수로 되감아 앞 표 위로 겹치던 회귀를 막는다.
-//!
-//! 문제 문서는 첫 문단에 TAC 표 둘을 연속으로 둔다. 첫 표는 신청서 제목 블록이고,
-//! 둘째 표는 개인정보 수집/이용 동의 블록이다. 저장된 다음 LINE_SEG 의 `vertical_pos` 가
-//! 이전 줄의 끝보다 작아 보일 때 그 차이를 그대로 더하면 y_offset 이 위로 되감겨 둘째 표가
-//! 제목 위에 겹친다. 이 테스트는 둘째 표가 첫 표의 아래에서 시작하는지만 좁게 확인한다.
+//! [#7103 / #7096] 구조 제어 사이의 TAC 표는 실제 저장 줄의 위치를 사용한다.
+//! 한컴 기준: pdf/ari-tutoring-application-2020.pdf (engine 2020).
+//! 단순 비겹침뿐 아니라 표 경계와 양수/음수 저장 간격을 독립 검증한다.
 
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -84,9 +80,70 @@ fn consecutive_tac_tables_do_not_rewind_to_the_previous_line_segment() {
         "#7103: 둘째 TAC 표는 제목 표 아래에서 시작해야 한다. \
          title={title:?}, consent={consent:?}"
     );
+    // 한컴 PDF의 제목 하단 띠 bottom=116.992pt. 근거 없는 2px gap 상한은 제거한다.
     assert!(
-        consent.y - title.bottom <= 2.0,
-        "#7103: 둘째 TAC 표는 제목 표 직후로 이어져야 한다. \
-         title={title:?}, consent={consent:?}"
+        (title.bottom - 116.992 * 96.0 / 72.0).abs() < 0.5,
+        "제목 하단 {title:?}"
     );
+}
+
+fn all_nodes<'a>(node: &'a RenderNode, out: &mut Vec<&'a RenderNode>) {
+    out.push(node);
+    for child in &node.children {
+        all_nodes(child, out);
+    }
+}
+
+#[test]
+fn hancom_privacy_and_tutor_boundaries_match() {
+    let core = load();
+    assert_eq!(core.page_count(), 1);
+    let page = core.build_page_render_tree(0).unwrap();
+    let mut nodes = Vec::new();
+    all_nodes(&page.root, &mut nodes);
+    let privacy = nodes.iter().find(|n| matches!(&n.node_type, RenderNodeType::Table(t) if t.row_count == 2 && t.col_count == 3)).unwrap();
+    let body = nodes.iter().find(|n| matches!(&n.node_type, RenderNodeType::Table(t) if t.para_index == Some(0) && t.control_index == Some(5))).unwrap();
+    let tutor = body
+        .children
+        .iter()
+        .find(|n| matches!(&n.node_type, RenderNodeType::TableCell(c) if c.row == 1 && c.col == 0))
+        .unwrap();
+    // PDF의 독립 수평 경계. 글자 bbox나 글꼴 모양과 비교하지 않는다.
+    for (actual, pdf_pt) in [(privacy.bbox.y, 151.994), (tutor.bbox.y, 286.487)] {
+        assert!(
+            (actual - pdf_pt * 96.0 / 72.0).abs() < 0.5,
+            "actual={actual}, Hancom={pdf_pt}pt"
+        );
+    }
+}
+
+fn stored_gap_survives(gap: i32) {
+    let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLE)).unwrap();
+    let mut doc = rhwp::parser::parse_document(&bytes).unwrap();
+    let para = &mut doc.sections[0].paragraphs[0];
+    // 원시 24/40은 두 표의 위치이며 header/footer의 원래 순서는 유지한다.
+    let delta = para.line_segs[1].line_height + gap;
+    para.line_segs[3].vertical_pos = para.line_segs[1].vertical_pos + delta;
+    let bytes = rhwp::serializer::serialize_document(&doc).unwrap();
+    let core = DocumentCore::from_bytes(&bytes).unwrap();
+    let page = core.build_page_render_tree(0).unwrap();
+    let mut tables = Vec::new();
+    collect_host_tables(&page.root, false, &mut tables);
+    tables.sort_by_key(|table| table.control_index);
+    assert_eq!(tables.len(), 2);
+    let actual = tables[1].y - tables[0].y;
+    assert!(
+        (actual - f64::from(delta) / 75.0).abs() < 0.1,
+        "stored gap={gap}: {tables:?}"
+    );
+}
+
+#[test]
+fn positive_saved_gap_is_preserved() {
+    stored_gap_survives(600);
+}
+
+#[test]
+fn negative_saved_gap_is_not_clamped() {
+    stored_gap_survives(-100);
 }

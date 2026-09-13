@@ -89,14 +89,6 @@ fn physical_outer_box_paint_inset_layout_gate(
         && measured_total_height.is_some_and(|measured| (measured - declared_height).abs() <= 0.5)
 }
 
-fn forward_line_seg_gap_hu(
-    current: &crate::model::paragraph::LineSeg,
-    next: &crate::model::paragraph::LineSeg,
-) -> i32 {
-    let current_end = current.vertical_pos.saturating_add(current.line_height);
-    next.vertical_pos.saturating_sub(current_end).max(0)
-}
-
 /// OWPML `NoteShapeType.noteLine.length`의 수평 길이 계약을 px로 해석한다.
 ///
 /// 알 수 없는 음수만 손상 문서 호환을 위해 기존 1/3 폭 fallback으로 남긴다.
@@ -2832,7 +2824,9 @@ pub(crate) fn control_line_seg_index(para: &Paragraph, control_index: usize) -> 
     let positions = para.control_text_positions();
     let p = *positions.get(control_index)?;
     if para.text.is_empty() && para.char_offsets.is_empty() {
-        let stream_pos = p.saturating_mul(8);
+        let stream_pos = para
+            .empty_control_stream_position(control_index)
+            .map_or_else(|| p.saturating_mul(8), |pos| pos as usize);
         // [#5961] `stream_pos` 는 컨트롤당 8유닛인 HWP5 축이므로 `text_start` 도 올린다.
         return para
             .line_segs
@@ -10277,6 +10271,7 @@ impl LayoutEngine {
                 None
             };
             let tbl_inline_x = flow_placement
+                .filter(|placement| placement.advance_end.is_none())
                 .map(|placement| {
                     col_area.x + placement.x + hwpunit_to_px(t.outer_margin_left as i32, self.dpi)
                 })
@@ -11063,6 +11058,16 @@ impl LayoutEngine {
                     para_y_for_table, table_y_before,
                 );
             }
+            // 저장 줄 계획의 pen/advance는 typeset과 동일하다. 표 하단에서 gap을
+            // 다시 추측하거나 위아래 여백을 후가산하지 않는다.
+            if let Some(end) = flow_placement.and_then(|placement| placement.advance_end) {
+                return TableControlOut {
+                    y_offset: col_area.y + end,
+                    tac_seg_applied: true,
+                    para_float_lane_info,
+                    early_return: Some((col_area.y + end, true)),
+                };
+            }
             // ── TAC 표: 줄간격 처리 ──
             // layout_table 반환값(표 하단)에 line_spacing을 더하여 다음 표 시작 y 결정
             if is_tac {
@@ -11103,10 +11108,10 @@ impl LayoutEngine {
                     if let (Some(seg), Some(next_seg)) =
                         (para.line_segs.get(seg_idx), para.line_segs.get(seg_idx + 1))
                     {
-                        let gap = forward_line_seg_gap_hu(seg, next_seg);
-                        if gap > 0 {
-                            y_offset += hwpunit_to_px(gap, self.dpi);
-                        }
+                        let gap = next_seg
+                            .vertical_pos
+                            .saturating_sub(seg.vertical_pos.saturating_add(seg.line_height));
+                        y_offset += hwpunit_to_px(gap, self.dpi);
                     }
                     return TableControlOut {
                         y_offset,
