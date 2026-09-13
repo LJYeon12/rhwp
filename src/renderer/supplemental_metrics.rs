@@ -36,6 +36,7 @@ pub struct MetricContext {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricError {
+    EditInProgress,
     ContextMismatch,
     InvalidStyle,
     UnsupportedCluster,

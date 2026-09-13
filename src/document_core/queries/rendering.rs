@@ -1229,6 +1229,7 @@ impl DocumentCore {
 
     /// 페이지 렌더 트리를 생성하여 반환한다 (native bridge / 외부 렌더러용).
     pub fn build_page_render_tree(&self, page_num: u32) -> Result<PageRenderTree, HwpError> {
+        self.require_portable_metrics()?;
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         Ok(tree)
@@ -1240,6 +1241,17 @@ impl DocumentCore {
     }
 
     pub fn build_page_layer_tree_with_profile(
+        &self,
+        page_num: u32,
+        profile: RenderProfile,
+    ) -> Result<PageLayerTree, HwpError> {
+        self.require_portable_metrics()?;
+        self.build_canvas_page_layer_tree_with_profile(page_num, profile)
+    }
+
+    /// Canvas2D-only replay entry. Its caller owns the browser font generation;
+    /// portable/native replay must use the guarded generic entry above.
+    pub fn build_canvas_page_layer_tree_with_profile(
         &self,
         page_num: u32,
         profile: RenderProfile,
@@ -1464,6 +1476,7 @@ impl DocumentCore {
     /// Compatibility/diagnostic backend for comparing pre-paint SVG behavior during migration.
     /// Production routing must not call this function implicitly or through an environment flag.
     pub fn render_page_svg_legacy_native(&self, page_num: u32) -> Result<String, HwpError> {
+        self.require_portable_metrics()?;
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         let mut renderer = SvgRenderer::new();
@@ -1737,6 +1750,7 @@ impl DocumentCore {
 
     /// HTML 렌더링 (네이티브 에러 타입)
     pub fn render_page_html_native(&self, page_num: u32) -> Result<String, HwpError> {
+        self.require_portable_metrics()?;
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         let mut renderer = HtmlRenderer::new();
@@ -1755,6 +1769,7 @@ impl DocumentCore {
     }
 
     pub fn render_page_canvas_legacy_native(&self, page_num: u32) -> Result<u32, HwpError> {
+        self.require_portable_metrics()?;
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         let mut renderer = CanvasRenderer::new();
@@ -2122,6 +2137,7 @@ impl DocumentCore {
         profile: RenderProfile,
         options: crate::paint::LayerJsonOptions,
     ) -> Result<String, HwpError> {
+        self.require_portable_metrics()?;
         // [Task #2222] 직렬화 JSON 캐시 — 트리 캐시(#2227 with_page_tree_cached)가
         // 있어도 1MB 급 재직렬화가 renderPage 마다 렌더 비용과 맞먹게 반복된다
         // (주보 p2 실측: 15.2ms/회, JSON 1.05MB). 출력옵션 지문이 다르면 미스.
