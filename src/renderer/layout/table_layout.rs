@@ -4898,7 +4898,21 @@ impl LayoutEngine {
                     let base_y = para_stored_anchor_y.unwrap_or(anchor_y);
                     (base_y, col_area.height - (base_y - col_area.y).max(0.0))
                 }
-                crate::model::shape::VertRelTo::Paper => (0.0, page_h_approx),
+                crate::model::shape::VertRelTo::Paper => {
+                    // [#6874] 용지 기준 표의 세로 기준 높이는 **실제 용지 높이**다.
+                    // `page_h_approx` 는 상·하 여백이 같다고 가정하는데 코퍼스 10k 의
+                    // 48.0%(4,779건)가 그렇지 않다. 어긋난 문서에서는 `Bottom` 정렬이
+                    // `ref_y + ref_h - …` 로 그대로 아래로 밀린다 — 위 30mm·아래 20mm
+                    // 문서에서 1160.3px 대 실제 1122.5px = +37.8px(#6266 실측).
+                    // 가로축은 이미 같은 자리에서 실제 용지 너비를 쓴다(`HorzRelTo::Paper`).
+                    //
+                    // ⚠ 아래 쪽 맞춤 가드(`pushed + table_height <= page_h_approx`)는
+                    // 자리차지·글뒤로·글앞으로 **모든 표**가 타므로 건드리지 않는다.
+                    // 이 기준 높이를 실제로 소비하는 `VertRelTo::Paper` 표는 10k 중
+                    // 113문서·637개뿐이고, 그중 상≠하 문서는 6건(표 26개)이다.
+                    let ph = self.current_page_height.get();
+                    (0.0, if ph > 0.0 { ph } else { page_h_approx })
+                }
             };
             // Top 캡션: 표 위치를 캡션 높이만큼 아래로 이동
             let caption_top_offset = if let Some(ref cap) = table.caption {
@@ -5644,6 +5658,7 @@ impl LayoutEngine {
             };
             // [#6630] 글자처럼 그림은 문단 배치의 y 가 아니라 여기서 따로 놓이므로 첫 문단
             // 위 여백(저장 vpos 상한)을 같이 준다.
+            //
             let mut tac_img_y = para_y_before_compose + first_para_lead_px;
             // [#6114] 쪽 분할 칸에서만 폴백 TAC 그림 페인트 하단으로 흐름을 민다.
             // 일반 칸까지 밀면 칸 상자 밖 글이 아래 본문과 겹친다.
@@ -8372,7 +8387,12 @@ impl LayoutEngine {
                 // 조건**(호스트가 칸의 마지막 문단)으로 싣는다 — 뒤 형제 문단이 있을 때
                 // 그 몫을 싣지 않는 계약(59043 `□ 편익`)은 그대로다.
                 let host_is_cell_last_para = pidx + 1 == paragraphs.len();
-                let nested_h: f64 = p
+                // [#7066] 저장 줄별 그룹은 측정(`height_measurer::cell_nested_controls_bottom`)
+                // 과 **같은 함수**로 낸다. 한 줄에 나란히 놓인 표는 그 줄이 합이 아니라
+                // 최댓값만 차지하므로, 합산하면 정렬용 콘텐츠 높이가 칸보다 커져 여유가
+                // `0` 으로 깎이고 `Center`·`Bottom` 이 상단정렬로 무너진다.
+                let groups = crate::renderer::float_placement::nested_table_groups(p);
+                let heights: Vec<f64> = p
                     .controls
                     .iter()
                     .map(|ctrl| {
@@ -8387,7 +8407,29 @@ impl LayoutEngine {
                             0.0
                         }
                     })
-                    .sum();
+                    .collect();
+                let para_top_hu = p.line_segs.first().map_or(0, |s| s.vertical_pos);
+                let mut nested_h = 0.0f64;
+                for group in groups {
+                    let height = if group.side_by_side {
+                        group
+                            .controls
+                            .iter()
+                            .map(|&ci| heights[ci])
+                            .fold(0.0, f64::max)
+                    } else {
+                        group.controls.iter().map(|&ci| heights[ci]).sum()
+                    };
+                    let bottom = if let Some(line) = group.line {
+                        let seg = &p.line_segs[line];
+                        let top =
+                            hwpunit_to_px(seg.vertical_pos.saturating_sub(para_top_hu), self.dpi);
+                        top + height
+                    } else {
+                        height
+                    };
+                    nested_h = nested_h.max(bottom);
+                }
                 if nested_h <= 0.0 {
                     0.0
                 } else {
@@ -10235,6 +10277,29 @@ impl LayoutEngine {
                     && is_empty_spacer_para
                     && matches!(p.line_segs.as_slice(), [seg] if !line_seg_is_synthetic(seg))
                     && match (p.line_segs.first(), cell.paragraphs.get(pi + 1)) {
+                        // [#7086] 다음 문단이 **저장 LINE_SEG 를 아예 갖지 않으면** 그
+                        // vpos 로는 이 빈 줄을 판정할 수 없다(비교할 좌표가 없다). 대신
+                        // **앞 문단의 저장 슬롯**이 이 문단의 vpos 에 정확히 닿는지 본다 —
+                        // 156060125 2쪽: p[16](vpos=0 lh=2982 ls=752) 의 슬롯 끝 3734 가
+                        // p[17].vpos 와 일치하고, p[18] 은 seg 가 없다. 이 빈 줄을 0 으로
+                        // 접으면 그 아래 쪽 전체가 11.8px 위로 올라간다(정본 대비 −21px 중
+                        // 큰 성분). 앞 슬롯이 어긋나면 종전대로 접는다.
+                        (Some(seg), Some(next_para))
+                            if next_para.line_segs.is_empty() && pi > 0 =>
+                        {
+                            let prev_slot_lands_here = cell.paragraphs[pi - 1]
+                                .line_segs
+                                .last()
+                                .is_some_and(|prev| {
+                                    !line_seg_is_synthetic(prev) && prev.line_height > 0 && {
+                                        let slot = i64::from(prev.vertical_pos)
+                                            + i64::from(prev.line_height)
+                                            + i64::from(prev.line_spacing.max(0));
+                                        (slot - i64::from(seg.vertical_pos)).abs() <= 2
+                                    }
+                                });
+                            seg.line_height > 0 && prev_slot_lands_here
+                        }
                         (Some(seg), Some(next_para)) if next_para.controls.is_empty() => {
                             match next_para.line_segs.first() {
                                 Some(next) if !line_seg_is_synthetic(next) => {

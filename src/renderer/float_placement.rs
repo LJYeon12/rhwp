@@ -582,6 +582,8 @@ pub struct InlineBoxPlacement {
     pub x: f64,
     pub y: f64,
     pub clearance: f64,
+    /// 저장 TAC 줄이 확정한 다음 흐름 위치(단 상대). 이 경우 x는 기존 표 정렬이 담당한다.
+    pub advance_end: Option<f64>,
 }
 
 /// 가로 구간에서 원자적 inline 상자가 들어갈 첫 줄을 찾는다.
@@ -643,6 +645,7 @@ pub(crate) fn place_inline_box(
         x,
         y,
         clearance: y - top,
+        advance_end: None,
     })
 }
 

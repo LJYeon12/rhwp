@@ -115,15 +115,9 @@ pub fn serialize_control(
             // 필드 컨트롤 직렬화 (표 154)
             // ctrl_id(4) + 속성(4) + 기타속성(1) + command_len(2) + command(가변) + id(4)
             //
-            // [Task #852 Stage 2.5] ClickHere 의 field_id 는 정답지 패턴 (form 마지막 +1) 우선.
-            // form_order_counter 가 form 다음 ClickHere 시점에 5 (form 0..4 다음) → instance_id =
-            // 0x7dcd59d6 + 5 = 0x7dcd59db (정답지와 일치).
-            let field_id =
-                if matches!(f.field_type, FieldType::ClickHere) && peek_form_order_counter() > 0 {
-                    0x7dcd_59d6u32.wrapping_add(peek_form_order_counter())
-                } else {
-                    f.field_id
-                };
+            // field_id is the explicit field-begin identity, not Form order.
+            // Replacing it at save time breaks cloned field references (#3587).
+            let field_id = f.field_id;
             let ctrl_id = if matches!(f.field_type, FieldType::Memo) {
                 tags::FIELD_UNKNOWN
             } else {
@@ -2549,8 +2543,11 @@ fn write_shape_component_base(
     } else if has_explicit_rendering_matrix(attr) {
         write_parsed_rendering_matrix(w, attr);
     } else {
-        let is_group_child = attr.group_level > 0;
-        let cnt: u16 = if is_group_child { 2 } else { 1 };
+        // [#4680] 쌍 개수는 그룹 깊이 + 1 이다. 한/글 HWP5 저장본 실측(264쪽 HWP3
+        // 변환본 대조): 깊이 0 → 1쌍, 1 → 2쌍, 2 → 3쌍, 3 → 4쌍. 종전에는 깊이와
+        // 무관하게 2 를 써서 두 겹 이상 중첩된 묶음의 레코드가 96바이트씩 짧았고,
+        // 한컴 저장본과의 레코드 길이 계약을 잃었다.
+        let cnt: u16 = attr.group_level.saturating_add(1);
         w.write_u16(cnt).unwrap();
         // translation matrix = identity [1, 0, 0, 0, 1, 0].
         // 그룹 자식 위치의 단일 권위는 render_tx/ty 다 (렌더러 layout_group_child_*,
@@ -2576,22 +2573,10 @@ fn write_shape_component_base(
         // rotation matrix. Hancom applies visible picture rotation from the
         // rendering rotMatrix, not only from ShapeComponentAttr.rotation_angle.
         write_matrix(w, shape_rotation_matrix(attr));
-        // 그룹 자식 (cnt=2): 두 번째 scale + rotation 세트 (identity)
-        if is_group_child {
-            // scale2 = identity
-            w.write_f64(1.0).unwrap();
-            w.write_f64(0.0).unwrap();
-            w.write_f64(0.0).unwrap();
-            w.write_f64(0.0).unwrap();
-            w.write_f64(1.0).unwrap();
-            w.write_f64(0.0).unwrap();
-            // rotation2 = identity
-            w.write_f64(1.0).unwrap();
-            w.write_f64(0.0).unwrap();
-            w.write_f64(0.0).unwrap();
-            w.write_f64(0.0).unwrap();
-            w.write_f64(1.0).unwrap();
-            w.write_f64(0.0).unwrap();
+        // 그룹 깊이만큼 남은 scale + rotation 쌍 (identity)
+        for _ in 0..attr.group_level {
+            write_matrix(w, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
+            write_matrix(w, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
         }
     }
 }
@@ -2675,8 +2660,8 @@ fn shape_rotation_matrix(attr: &ShapeComponentAttr) -> [f64; 6] {
 }
 
 fn write_generated_rendering_matrix(w: &mut ByteWriter, attr: &ShapeComponentAttr) {
-    let is_group_child = attr.group_level > 0;
-    let cnt: u16 = if is_group_child { 2 } else { 1 };
+    // [#6874] 쌍 개수는 그룹 깊이 + 1 이다 — 아래 폴백 경로와 같은 규칙.
+    let cnt: u16 = attr.group_level.saturating_add(1);
     w.write_u16(cnt).unwrap();
     write_matrix(
         w,
@@ -2691,7 +2676,7 @@ fn write_generated_rendering_matrix(w: &mut ByteWriter, attr: &ShapeComponentAtt
     );
     write_matrix(w, shape_scale_matrix(attr));
     write_matrix(w, shape_rotation_matrix(attr));
-    if is_group_child {
+    for _ in 0..attr.group_level {
         write_matrix(w, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
         write_matrix(w, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
     }
@@ -2703,7 +2688,10 @@ fn write_parsed_rendering_matrix(w: &mut ByteWriter, attr: &ShapeComponentAttr) 
     //
     // Store the parsed affine transform so reload reconstructs exactly:
     // [sx, b, tx; c, sy, ty] = [1,0,tx;0,1,ty] x I x [sx,b,0;c,sy,0]
-    w.write_u16(1).unwrap();
+    //
+    // [#6874] 쌍 개수는 그룹 깊이 + 1 이다. 종전에는 깊이와 무관하게 1 을 써서, 명시
+    // 변환을 가진 묶음 자식의 레코드가 한/글 저장본보다 96바이트씩 짧았다.
+    w.write_u16(attr.group_level.saturating_add(1)).unwrap();
     write_matrix(w, [1.0, 0.0, attr.render_tx, 0.0, 1.0, attr.render_ty]);
     write_matrix(
         w,
@@ -2717,6 +2705,10 @@ fn write_parsed_rendering_matrix(w: &mut ByteWriter, attr: &ShapeComponentAttr) 
         ],
     );
     write_matrix(w, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
+    for _ in 0..attr.group_level {
+        write_matrix(w, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
+        write_matrix(w, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
+    }
 }
 
 /// 도형 채우기 직렬화 (SHAPE_COMPONENT 내부 — parse_fill과 동일한 형식)
@@ -2966,11 +2958,6 @@ fn next_form_order() -> u32 {
     })
 }
 
-/// 현재 카운터 값 조회 (다음 Form 직렬화 시 사용될 order). Form 5 개 직렬화 직후 = 5.
-fn peek_form_order_counter() -> u32 {
-    FORM_ORDER_COUNTER.with(|c| c.get())
-}
-
 /// 양식 개체 직렬화 — CTRL_HEADER (46 bytes) + HWPTAG_FORM_OBJECT 자식
 ///
 /// 정답지 `samples/form-01.hwp` reverse engineering 결과를 기반으로 작성.
@@ -3011,11 +2998,10 @@ fn serialize_form_control(form: &FormObject, level: u16, records: &mut Vec<Recor
     } else {
         order as i32
     };
-    let instance_id = if from_hwp5_header {
-        c.instance_id
-    } else {
-        0x7dcd_59d6u32.wrapping_add(order)
-    };
+    // The document writer assigns missing legacy Form identities against the
+    // whole document before emitting records. This low-level writer preserves
+    // the supplied identity, including an original HWP identity of zero.
+    let instance_id = c.instance_id;
     let mut hdr = Vec::with_capacity(46);
     hdr.extend_from_slice(b"mrof"); // ctrl_id "form" little-endian
     hdr.extend_from_slice(&attr.to_le_bytes());

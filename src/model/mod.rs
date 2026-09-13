@@ -12,6 +12,7 @@ pub mod footnote;
 pub mod header_footer;
 pub mod hyperlink;
 pub mod hyperlink_format;
+pub(crate) mod identity;
 pub mod image;
 pub mod page;
 pub mod paragraph;
