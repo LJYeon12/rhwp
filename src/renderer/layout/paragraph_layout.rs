@@ -4867,8 +4867,19 @@ impl LayoutEngine {
                             })
                         })
                 };
+            // 셀 안 TAC 줄의 저장 폭이 문단 오른쪽 여백만큼 좁으면 어울림 영역이
+            // 아니라 이미 여백을 뺀 폭이다. 이를 다시 열 폭으로 쓰면 아래에서
+            // 여백을 두 번 뺀다(issue_1285: 4px + 4px). 실제로 더 좁은 줄은 유지한다.
+            let inline_tac_segment_is_paragraph_width = cell_ctx.is_some()
+                && comp_line.column_start == 0
+                && styled_margin_left == 0.0
+                && margin_right > 0.0
+                && comp_line
+                    .segment_width
+                    .abs_diff(px_to_hwpunit(col_area.width - margin_right, self.dpi))
+                    <= 1;
             let uses_stored_segment_geometry = (has_picture_shape_square_wrap
-                || line_has_inline_tac_table
+                || (line_has_inline_tac_table && !inline_tac_segment_is_paragraph_width)
                 || precomputed_body_wrap_line
                 || empty_stored_wrap_line
                 || body_square_wrap_stored_line

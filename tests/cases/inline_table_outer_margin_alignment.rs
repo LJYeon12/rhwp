@@ -12,7 +12,13 @@ const FIXTURE: &[u8] = include_bytes!("../fixtures/inline_table_outer_margins/tw
 const FRAME_LEFT: f64 = (3600.0 + 7200.0) * 96.0 / 7200.0;
 const FRAME_RIGHT: f64 = (3600.0 + 28800.0) * 96.0 / 7200.0;
 
-fn digit_boxes(align: Alignment, left: i16, right: i16, stored: bool) -> Vec<(f64, f64, f64)> {
+fn digit_boxes(
+    align: Alignment,
+    left: i16,
+    right: i16,
+    stored: bool,
+    paragraph_right_margin: i32,
+) -> Vec<(f64, f64, f64)> {
     let source = DocumentCore::from_bytes(FIXTURE).expect("synthetic HWPX");
     let mut document = source.document().clone();
     let Control::Table(outer) = &mut document.sections[0].paragraphs[1].controls[0] else {
@@ -20,6 +26,11 @@ fn digit_boxes(align: Alignment, left: i16, right: i16, stored: bool) -> Vec<(f6
     };
     let paragraph = &mut outer.cells[1].paragraphs[0];
     document.doc_info.para_shapes[paragraph.para_shape_id as usize].alignment = align;
+    document.doc_info.para_shapes[paragraph.para_shape_id as usize].margin_right =
+        paragraph_right_margin;
+    // ParaShape margins use twice the LineSeg unit. The saved row already
+    // excludes this paragraph margin, as in the public issue_1285 document.
+    paragraph.line_segs[0].segment_width -= paragraph_right_margin / 2;
     if !stored {
         paragraph.line_segs.clear();
     }
@@ -76,7 +87,7 @@ fn digit_boxes(align: Alignment, left: i16, right: i16, stored: bool) -> Vec<(f6
 fn stored_line_aligns_the_whole_inline_table_footprint() {
     for align in [Alignment::Left, Alignment::Center, Alignment::Right] {
         for (left, right) in [(0, 0), (360, 720), (720, 360), (-180, 360)] {
-            let boxes = digit_boxes(align, left, right, true);
+            let boxes = digit_boxes(align, left, right, true, 0);
             let start = boxes[0].0 - f64::from(left) * 96.0 / 7200.0;
             let end = boxes[1].0 + boxes[1].2 + f64::from(right) * 96.0 / 7200.0;
             let (actual, expected) = match align {
@@ -98,10 +109,25 @@ fn table_only_layout_keeps_counting_outer_margins_once() {
     // Removing stored line data selects the separate inline-table paragraph path.
     // Its widths already include margins; changing Table::flow_width_hu globally
     // would double-count them here.
-    let boxes = digit_boxes(Alignment::Right, 360, 720, false);
+    let boxes = digit_boxes(Alignment::Right, 360, 720, false, 0);
     let end = boxes[1].0 + boxes[1].2 + 720.0 * 96.0 / 7200.0;
     assert!(
         (end - FRAME_RIGHT).abs() < 0.2,
         "table-only footprint ends at {end}"
     );
+}
+
+#[test]
+fn stored_inline_table_line_counts_paragraph_right_margin_once() {
+    for margin in [600, 1800] {
+        for (left, right) in [(0, 0), (360, 720)] {
+            let boxes = digit_boxes(Alignment::Right, left, right, true, margin);
+            let end = boxes[1].0 + boxes[1].2 + f64::from(right) * 96.0 / 7200.0;
+            let expected = FRAME_RIGHT - f64::from(margin) / 2.0 * 96.0 / 7200.0;
+            assert!(
+                (end - expected).abs() < 0.2,
+                "paragraph right margin {margin}: footprint ends at {end}, expected {expected}"
+            );
+        }
+    }
 }
