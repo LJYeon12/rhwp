@@ -2,7 +2,7 @@
 
 - 일자: 2026-09-13
 - 계획: [승인된 구현계획](../plans/task_m100_7084_impl.md)
-- 상태: **A 구현 후 집중 검증 준비. Studio 활성화·시각 개선 완료 아님.**
+- 상태: **A 절편 구현·집중 15건·native Clippy 통과. B Studio 연결은 미착수.**
 - 통합 기준: `upstream/devel`의 `70bf40af2a2818e72bd58b4fa66e2d4c06de2b51`.
   계획 보존 `1f33a7059` 후 `c71cea458`에서 충돌 없이 통합했다. #7106 창 제목 변경은 보존했다.
 
@@ -30,7 +30,41 @@ DB hit·공백/탭·반각 형태·전각·좁은 구두점·합성 PUA의 의�
 실제 브라우저/한컴 일치 검증은 B·C 절편에서 수행한다.
 
 - 초기 `cargo check --locked --lib --target-dir target/pr-review`: 성공(34.19초).
-- 최종 source SHA의 집중 테스트·포맷 결과: 아래에 후속 기록한다.
+- 최종 제품/테스트 SHA: `cccc33a360097ec5a9d7d4c11f5a09cf3c928ae3`.
+
+### 최종 집중 검증
+
+검증 전용 detached worktree `/home/edward/mygithub/rhwp-rust-review-7084-a`에서
+위 SHA를 checkout했다. target은 기존 `/home/edward/mygithub/rhwp/target/pr-review`를
+공유하여 순차 실행했다. generated suite/manifest는 해당 worktree에만 생성했고 커밋하지 않았다.
+
+| 명령 | 결과 |
+| --- | --- |
+| `node scripts/rust-test-suite-manifest.mjs --prepare` | 성공, 최종 새 source는 `regression_suite_003`에 자동 배정 |
+| `cargo fmt --all -- --check` | 성공 |
+| `node scripts/run-rust-test.mjs --cargo-test issue_7084_supplemental_metrics -- --target-dir /home/edward/mygithub/rhwp/target/pr-review` | **15 passed / 0 failed**, 실행 0.11초, 컴파일 포함 1분 05초 |
+| `cargo clippy --locked --target-dir /home/edward/mygithub/rhwp/target/pr-review -- -D warnings` | 성공, 58.78초 |
+| `node scripts/rust-test-suite-manifest.mjs --check` | 성공, 1,306 sources / 48 integration targets |
+| `git diff --check` | 성공 |
+
+15건은 다음을 검증한다: 전체 폭/문자 위치, 비이모지 미등록 glyph, DB hit·공백·탭·PUA 등의
+기존 규칙, 장평·양수/음수 자간, 반복 대시, snapshot 교체, 크기·bold/italic·첨자 식별,
+multi-scalar 전체 보류, 잘못된 입력/0 advance, 실패/동일 등록 원자성, key 총량 상한,
+문서·폰트·backend 세대 변경, Canvas 실측의 backend 경계, 직렬화 제외/세션 폐기,
+실제 Noto Sans KR의 cmap/hmtx·source identity.
+
+### 첫 실행의 실패와 정정 근거
+
+후보 `dc06a7202`는 13건 중 12건 통과, 1건 실패였다. 이는 새 테스트가 기존
+`EmbeddedTextMeasurer::estimate_text_width`의 `total.round()`를 0.01px 반올림으로
+잘못 가정한 테스트 오류다. 기존 API는 **정수 px 반올림**, 문자 위치는 raw px를 반환한다.
+제품의 반올림을 변경하거나 기존 golden을 완화하지 않고, 새 테스트를
+`전체 폭 == 마지막 문자 경계.round()`의 정확한 계약으로 정정했다.
+
+함께 반복 대시의 기존 전용 폭 규칙을 보충 측정에서 제외하고, font 자료 동등 비교는
+항목마다 전체 bytes를 다시 비교하지 않도록 이미 검증한 hash·face·glyph로 처리했다.
+이 보완 후의 최종 SHA에서 위 검증을 다시 통과했다. 이 첫 실패를 제품 결함의 RED 증거로
+보고하지 않는다. 브라우저 압축에 대한 실제 RED→GREEN은 B·C에 남아 있다.
 
 ## 아직 남은 연결과 보호 경계
 
