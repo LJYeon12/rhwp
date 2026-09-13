@@ -2,7 +2,7 @@
 
 - 일자: 2026-09-13
 - 계획: [구현계획](../plans/task_m100_7084_impl.md)
-- 상태: **B 진행 중. 측정 준비부 및 공통 Canvas 폰트 설정·폭 단위 환산 구현. Studio 재조판/paint 활성화 미완료.**
+- 상태: **B 진행 중. 측정 준비부·공통 Canvas 설정·폭 환산 및 코어 세션 소유권 구현. Studio 재조판/paint 활성화 미완료.**
 - 선행: [A 결과](task_m100_7084_stage2.md), 인계 `b9b271238`.
 - 최초 준비부 제품/테스트 SHA: `eef7b3293f803ca3f8b702419c381f512e808b44`.
 - 공통 설정 후속 제품/테스트 SHA: `2364c51f37fefde1b04b68e7c2509e6828659393`.
@@ -172,3 +172,59 @@ workspace build/all-target Clippy, 전체 Rust·Studio 회귀, Native Skia·Rend
 Docker WASM 두 원본 검증 순서로 진행한다. 특히 기존 fit helper의 첨자 보정까지 그대로
 적용하면 새 측정에 첨자가 이중 적용될 수 있으므로, 유효 보충 자료를 소비하는 paint 경계에서
 같은 측정인지 확인해야 한다. **공통 설정 연결만으로 fit·세션 수명·타 backend 보호가 완료되지는 않는다.**
+
+## 6. 코어 측정 세션·출력 경계
+
+제품/테스트 후보: `0527ce2786` (`2498b605c` 세션 구현, `6bc64c0fc` 셀 서식 배치 보완 포함).
+
+### 6.1 구현
+
+- `DocumentCore`가 Canvas 측정 저장소를 소유한다. 등록과 활성화를 분리하며 기본 상태는
+  비활성이다. 문서/폰트 세대가 바뀌면 이전 저장소를 폐기하여 외부에 남은 스타일의 자료도 무효화한다.
+- 활성화·해제 및 활성 상태의 자료 변경은 기존 `rebuild_derived_state`를 통해 스타일·문단 구성·
+  표/문단 측정·페이지네이션·페이지 트리를 함께 갱신한다. 같은 자료 등록과 같은 상태 선택은 재계산하지 않는다.
+- 실제 WebCanvas의 페이지·부분 영역 그리기는 명시적인 Canvas layer-tree 진입점을 사용한다.
+  일반 layer-tree, SVG, HTML 등 portable 출력은 Canvas 측정이 활성인 동안 오류로 거부한다.
+  다른 출력은 페이지 수를 열거하기 **전에** portable 문맥을 선택해야 한다. 출력 실패를 숨겨 진행하지 않는다.
+- 새 문서 설정/빈 문서 생성은 소유자를 해제한다. 편집 batch 중 세대 변경·자료 등록·문맥 전환은
+  `EditInProgress`로 거부하여 편집의 지연 재조판과 섞이지 않게 한다.
+- 셀 서식 배치가 해석된 스타일을 직접 교체하는 경로에도 snapshot을 유지했다.
+  색상 변경으로 서식 ID가 달라져도 같은 폰트 측정은 유지하고, 다른 폰트/크기는 기존 값 기반 key로 구분한다.
+
+이 절은 **Rust 코어에서의 세션 소유권과 출력 거부 경계**다. TypeScript 측정 준비부의 실제 호출,
+WASM 등록 API, 누락 문자 요청 수집, Studio 내보내기 전후의 문맥 복원, paint descriptor/fit 정합은
+아직 연결하지 않았다. 따라서 사용자 화면을 개선했다고 판단하지 않는다.
+
+### 6.2 검증 및 정정
+
+- 원본 `c-form-labnote-001-stage11-filled.hwp/.hwpx`를 그대로 사용했다. 새 합성 문서나 정답지 변경은 없다.
+- 세션 집중 검사 4건이 통과했다: HWP/HWPX 활성화·해제, 세대 변경/늦은 결과 거부,
+  문서 교체/편집 배치 보호, 셀 색상 변경 후 측정 유지.
+- 활성화 시 실제 replay 좌표가 달라지고, 해제 시 원래 좌표와 SVG가 복구되는 것을 검사한다.
+  전환 전후 전체 Document의 Debug 표현도 비교하여 원본 IR 불변을 확인했다.
+- 첫 테스트 컴파일은 Document가 Serialize를 구현하지 않는데 JSON 직렬화를 호출하여 실패했다.
+  제품 타입을 바꾸지 않고 기존 Debug 표현을 비교하도록 테스트를 정정했다.
+- 첫 실행 2건 실패는 K0 런의 선택적 `layout_positions=None`을 비교한 테스트 오류였다.
+  K0는 painter에서 스타일로 좌표를 계산하므로 그 경로를 사용하도록 정정했다. 기대 폭 완화는 없다.
+- 격리 검증 worktree에서 문맥 전환의 `rebuild_derived_state` 호출을 제거한 음성 대조는
+  **2건 실패**를 검출했다. 이전 폭의 마지막 좌표 32.5333px와 새 측정의 44.1694px가
+  서식 변경 전후 섞이는 것을 검출했으며, 대조 후 원 구현으로 복구하고 Git 차이 0을 확인했다.
+- 원 구현 복원 후 세션 **4 passed / 0 failed**, 0.15초(컴파일 28.74초), 기존 보충 측정
+  **21 passed / 0 failed**, 0.12초(컴파일 4.45초).
+- native Clippy `-D warnings` 성공, 1분 00초. WASM32 lib Clippy `-D warnings` 성공, 55.48초.
+- 검증 worktree의 `cargo fmt --all -- --check`, manifest `--check` 성공:
+  **1,307 sources / 48 integration targets**. 파생 suite/manifest/Cargo는 커밋하지 않았다.
+- Studio 준비부 집중 **10 passed / 0 failed**, 136.45ms, `npx tsc --noEmit` 성공.
+- 최종 검증 source는 `0527ce27864694ce21b425abba718abca60182de`와 일치한다.
+
+검증은 5.2절과 같은 격리 worktree 방식이며 세션 집중 명령만 다음을 추가했다.
+
+```bash
+node scripts/run-rust-test.mjs --cargo-test issue_7084_canvas_metric_session -- \
+  --target-dir /home/edward/mygithub/rhwp/target/pr-review
+```
+
+workspace build/all-target Clippy·전체 회귀·Native Skia·Render Diff·Docker WASM·실브라우저
+시각 판정은 이번 절편에서 실행하지 않았다. PR 직전 전체 게이트 완료로 보고하지 않는다.
+임시 검증 worktree는 검사 후 제거하며, 원본 샘플과 공유 target cache는 유지한다.
+원격 push·PR·GitHub 댓글은 수행하지 않았다.
