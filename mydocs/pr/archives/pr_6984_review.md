@@ -6,6 +6,74 @@
 > 확인 후 표시 문자열 전체와 필드를 함께 삭제한다. 사용자가 로컬 동작을 확인하고
 > PR 반영·코멘트 게시를 승인했다. 병합 승인은 별도다.
 
+## 2026-09-14 devel 충돌 해소 후 재검증
+
+- 직전 PR head `13964b34885ba246e970f9b764ed47b8113f23ba`와 최신 devel
+  `01bbb649a74420213aec8a93d9e404368c4063d5`를 통합했다.
+- 검증한 코드 commit: `34400f95b908fe6e615283e3531c3e5c992b5ede`.
+  source history를 보존한 merge commit이며 force-push하지 않았다.
+- 사용자 지시: 충돌 해소 후 Rust 필수 검사, 하이퍼링크 편집·서식 복원·저장 왕복·PDF 링크와
+  새 head CI를 재검증한다. 실제 PR merge와 issue 종료는 승인 범위에 포함하지 않는다.
+
+### 충돌 해소와 동작 보존
+
+| 파일 | 해소 내용 |
+| --- | --- |
+| `src/document_core/queries/rendering.rs` | devel의 기본 `RenderProfile::Print`를 선택하고, PR의 같은 출력 트리에서 구한 하이퍼링크 주석 전달을 보존 |
+| `src/model/event.rs` | `HyperlinkChanged`와 `TemplateFilled` 직렬화 분기를 모두 보존 |
+| `src/model/mod.rs` | `hyperlink`, `hyperlink_format`, `identity` 모듈을 모두 보존 |
+| `tests/issue_2724_passthrough_invalidation_guard.rs` | 하이퍼링크 및 템플릿/블록 가져오기 API의 실제 무효화 helper 위임 등록을 모두 보존 |
+
+기본 PDF에서 빈 누름틀 안내문이 다시 인쇄되는 #7076 회귀를 피했다. 최신 native CLI로
+생성한 기본 PDF는 명시적 Print PDF와 바이트가 같고 Screen PDF와는 다르다. 두 출력의
+같은 페이지를 직접 확인하여 Print에서는 빨간 안내문이 빠지고 본문·표 테두리는 유지됨을
+확인했다. Textmail 기본 PDF의 `http://www.hancom.co.kr` URI 주석도 독립 pypdf 파서로 확인했다.
+
+### 새 코드에서 실행한 검증
+
+| 검증 | 결과 |
+| --- | --- |
+| Rust 필수 lint | suite prepare, fmt, fmt check, native Clippy, WASM32 Clippy, workspace build, workspace/all-target Clippy, manifest check, unit-tier check 모두 통과 |
+| 전체 release-test nextest | **9,781 passed / 51 skipped / 0 failed**, 테스트 실행 154.301초. 기존 결과 재사용 없이 통합 코드에서 재실행 |
+| 하이퍼링크 native 편집·왕복 | 전체 회귀 안의 20개 테스트 통과. 경계 입력, 삭제 Undo, 혼합 원래 서식, HWP/HWPX 및 교차 형식 왕복 포함 |
+| Native Skia | lib 3,930 passed / 13 ignored, 내부 crate 182 passed; 누락 그림 2개·직접 PDF 4개 통과 |
+| Native 하이퍼링크 PDF 추가 검사 | `--features native-skia`로 9개 통과. Skia 직접 PDF·URI 인코딩·좌표·페이지 재정렬/중복·기존 한컴 문서 링크 포함 |
+| Fresh WASM | locked wrapper `--target web --out-dir pkg --no-opt` 성공; 실제 WASM 21개 시나리오 통과 |
+| Studio | 1,667 passed / 2 skipped / 0 failed, TypeScript·Vite build 통과 |
+| 실제 Chrome UI | 링크 앞뒤 입력, Delete/Backspace 확인·취소·전체 삭제·Undo, 기존 링크 고치기·지우기·방문색·혼합 원래 색/밑줄 복원 통과 |
+| 실제 Studio 저장·재열기·인쇄 | HWP/HWPX 왕복 후 5개 PDF, 34쪽·81개 URI 주석 검증. DOM 대비 최대 좌표 오차 **0.380280pt**, 기존 1pt 허용치 그대로 통과 |
+| PDF 뷰어 클릭 | Chrome 내장 PDF 뷰어의 실제 hit area 클릭으로 보존된 URI 이동 확인. 외부 요청은 로컬 테스트 응답으로 가로챔 |
+
+WASM SHA-256: `5834d0293661647bdb38af52a111ade6f8c6fb2a58a94f17e0f8b23e6d31d2fa`.
+원시 실행 로그는 `/private/tmp/pr6984-devel-gates/`, 재현 명령·코드 SHA·입력 해시·결과는
+[재검증 증거](../assets/issue6984/devel-20260914/validation.json)에 남겼다.
+
+- [새 UI 서식 복원 화면](../assets/issue6984/devel-20260914/unlink-restored.jpg)
+- [기본 Print PDF 화면](../assets/issue6984/devel-20260914/native-form-print.png) /
+  [명시적 Screen PDF 화면](../assets/issue6984/devel-20260914/native-form-screen.png)
+- [Native Textmail PDF 화면](../assets/issue6984/devel-20260914/native-textmail.png)
+
+### 증거 범위와 최종 조건
+
+아래 조판 원칙 표의 공통 출력 트리·좌표 계약을 유지한다. 줄 나누기/높이 계산의 신규
+하이퍼링크 전용 예외를 추가하지 않았으며 baseline·golden·허용치를 변경하지 않았다.
+Textmail의 링크 주석 유무에 따른 실제 PDF 두 화면을 직접 비교하여 같은 배치를 확인했다.
+LH 8쪽 링크 영역도 직접 확인했으며 기존 아래쪽 clipping과 한컴 기준 배치 차이를
+해소했다고 주장하지 않는다. 실행에 재사용한 입력·기준 14개는 모두 현재 commit과 바이트가
+일치하고 이전 검증 때와 동일하다. 추가 #7076 서식도 현재 commit과 실제 바이트를 대조했다.
+이전 한컴 Viewer 확인은 당시 후보의 역사 기록이며 이번 통합에서 Viewer를 다시 실행하지 않았다.
+
+**재검증 판정: 승인.** 코드 후보의 새 Full CI
+[34769996599](https://github.com/edwardkim/rhwp/actions/runs/34769996599)가 성공했다.
+Lint·Native Skia·Frontend package·4개 archive build와 A~D 테스트·최종 Build & Test가
+모두 실제 실행되어 통과했다. 같은 head의 CodeQL·Render Diff·Proptest roundtrip·
+Adapter inter-diff·CI Impact Policy도 성공했다. 조회 당시 `MERGEABLE / CLEAN`이다.
+CI preflight의 checkout 중 `not uptodate` annotation은 남았지만 checkout은
+`01bbb649a`로 완료됐고, preflight 및 전체 검사도 성공한 것을 로그로 확인했다.
+이번 문서·화면만 담는 trailing commit을 push한 후 그 최신 head의 required check와
+정책 상태·mergeability를 다시 확인한다. 실제 merge는 사용자 별도 승인 뒤 수행한다.
+아래 2026-09-13 최종 검토와 CI 계보는 당시 후보에 대한 역사 기록이다.
+
 ## 2026-09-13 병합 준비 최종 검토
 
 - 검토 head: `bf06a239e6d12db4c14a0b6b85edda299b6a624a`.
@@ -362,7 +430,7 @@ Docker 데몬 연결이 불가해 매뉴얼이 허용한 native WASM 진단 경�
 검증 범위 밖이다. bare `createEmpty()` 최소 IR의 저장 제약은 실제 Studio의
 `createBlankDocument()` 경로와 구분해 API 가이드에 기록했다.
 
-## 최종 판정
+## 2026-09-13 최종 판정 (이력)
 
 **승인** — 최종 검토 head `bf06a239e6d12db4c14a0b6b85edda299b6a624a`의
 HTTP/HTTPS 편집·경계 입력·삭제 Undo·원래 서식 복원·저장 왕복·PDF 링크 보존 범위다.

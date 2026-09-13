@@ -4,8 +4,10 @@
 - 사용자 승인: 로컬 동작 확인 뒤 PR 반영·코멘트 게시·최종 리뷰 준비를 요청했다.
   병합·issue 종료는 이번 지시 범위가 아니다.
 - 원격 원 head: `065bda2307db18eafa8394a360289c8558ffcc7b`.
-- 통합 base: `897c6a3d8` (`upstream/devel`, 2026-09-13 fetch).
-- 최신 코드·테스트 후보: `560a4a1dbf38c33ccccef33ae7577fd6013a65fa`.
+- 최신 통합 base: `01bbb649a74420213aec8a93d9e404368c4063d5` (`devel`, 2026-09-14).
+- 최신 통합 코드 후보: `34400f95b908fe6e615283e3531c3e5c992b5ede`.
+- 2026-09-13 이전 통합 base: `897c6a3d8`.
+- 2026-09-13 코드·테스트 후보: `560a4a1dbf38c33ccccef33ae7577fd6013a65fa`.
 - 서식 복원 제품·증거 커밋: `4a66e22d9fad86879f554983917f5db697c69168`.
 - 직전 원격 head: `549a4e099560519ac8aa05c32bbd147c7c9ee33e`.
 
@@ -63,7 +65,7 @@ Undo 한 번으로 문자열·주소·서식을 복구한다. 기존 하이퍼�
 원격 게시 이후 보정이 필요하면 후속 커밋으로 처리하며, 기존 이력을 재작성하지 않는다.
 최종 검증 결과와 남은 조건은 review 문서 및 게시 코멘트에 실제 완료 상태로 남긴다.
 
-## 병합 준비 최종 검토
+## 2026-09-13 병합 준비 최종 검토 (이력)
 
 `bf06a239e` 기준 self-review를 완료했다. 1차 HTTP/HTTPS 범위의 새 차단 결함은
 발견하지 못했다. 최신 base `897c6a3d8`과 merge simulation이 무충돌이며, 기존 Full CI와
@@ -71,3 +73,14 @@ Undo 한 번으로 문자열·주소·서식을 복구한다. 기존 하이퍼�
 최종 판정·조판 원칙 표·검증 입력 해시는 [review](pr_6984_review.md)에 기록했다.
 이번 trailing 기록은 코드 변경 없이 같은 PR에 반영하고 최신 required CI를 확인한다.
 실제 merge는 사용자의 명시적 승인 뒤 진행한다. 승인되지 않은 admin 우회·issue 종료는 없다.
+
+## 2026-09-14 devel 통합 재검증
+
+사용자 지시에 따라 최신 devel을 merge하고 네 Rust 파일의 충돌을 해소했다. PDF 기본
+Print 프로필과 링크 주석 전달을 함께 유지하며 이벤트·모듈·무효화 가드의 양쪽 추가를
+보존했다. 코드 후보 `34400f95b`를 검증 후 같은 PR 브랜치에 일반 push했다.
+Rust 필수 lint, 전체 9,781개 회귀, Native Skia, 실제 WASM 21그룹, Studio 1,667개 검사,
+실제 UI/저장 왕복/브라우저 PDF/Skia 링크 주석 검증을 모두 통과했다.
+코드 후보의 Full CI `34769996599`와 CodeQL·Render Diff·Proptest·Adapter inter-diff가
+모두 성공했고 `MERGEABLE / CLEAN`을 확인했다. 이 기록·화면 증거만 trailing commit으로
+반영하고 그 head의 CI도 확인한다. PR 본문의 기존 스크린샷을 보존하며 실제 merge는 별도 승인을 기다린다.
