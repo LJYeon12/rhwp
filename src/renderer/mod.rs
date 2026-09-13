@@ -1462,10 +1462,15 @@ pub(crate) fn composed_line_tac_object_height_px(
 pub(crate) fn cell_vpos_ladder_is_intact(
     paragraphs: &[crate::model::paragraph::Paragraph],
 ) -> bool {
-    paragraphs
-        .iter()
-        .enumerate()
-        .all(|(idx, para)| first_seg_vpos_is_anchor(para, idx))
+    paragraphs.iter().enumerate().all(|(idx, para)| {
+        // 문단 내부의 뒤 줄도 vpos=0이면 절대 위치가 없는 줄이다.
+        // 배치는 줄을 쌓으므로 max(vpos + lh)를 높이로 쓰면 과소 계산한다.
+        // 어울림 개체 좌우의 가로 조각은 실제 같은 줄이므로 보존한다.
+        first_seg_vpos_is_anchor(para, idx)
+            && para.line_segs.iter().enumerate().skip(1).all(|(i, seg)| {
+                seg.vertical_pos != 0 || height_measurer::stored_seg_is_row_fragment(para, i)
+            })
+    })
 }
 
 /// [#2287] 저장 LINE_SEG 없는 빈 anchor 문단의 TAC(글자처럼) 그림/도형 플로우

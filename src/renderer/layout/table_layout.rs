@@ -8068,20 +8068,8 @@ impl LayoutEngine {
             // 정렬 오프셋과 담을 줄 수가 1줄분으로 굳어 뒤 문단이 셀 밖으로 밀려
             // 잘리거나 아예 렌더되지 않는다. 배치 쪽 first_seg_vpos_is_anchor 와
             // 같은 규약을 측정에도 적용한다.
-            let stored_flow_has_para_anchors = cell
-                .paragraphs
-                .iter()
-                .enumerate()
-                .all(|(idx, para)| crate::renderer::first_seg_vpos_is_anchor(para, idx));
-            // 문단 내부의 둘째 줄 이후에도 vpos=0은 앵커 부재일 수 있다.
-            // 같은 높이의 두 줄을 한 줄 extent로 정렬하면 반 줄만큼 아래로 밀린다.
-            // 어울림 개체 좌우의 가로 조각은 실제 같은 줄이므로 예외로 보존한다.
-            let stored_flow_has_line_anchors = cell.paragraphs.iter().all(|para| {
-                para.line_segs.iter().enumerate().skip(1).all(|(idx, seg)| {
-                    seg.vertical_pos > 0
-                        || crate::renderer::height_measurer::stored_seg_is_row_fragment(para, idx)
-                })
-            });
+            let stored_flow_has_para_anchors =
+                crate::renderer::cell_vpos_ladder_is_intact(&cell.paragraphs);
             let stored_flow_shape_is_trusted = (depth > 0 || table.common.treat_as_char)
                 && stored_flow_extent > 0.0
                 && non_flow_object_extent <= stored_flow_extent + 0.5
@@ -8091,8 +8079,7 @@ impl LayoutEngine {
                 && self.calc_non_inline_controls_flow_height(&cell.paragraphs)
                     <= stored_flow_extent + 0.5
                 && stored_flow_extent + 0.5 >= 0.5 * stored_flow_line_sum
-                && stored_flow_has_para_anchors
-                && stored_flow_has_line_anchors;
+                && stored_flow_has_para_anchors;
             // 일반 셀은 저장 extent가 자체 측정값보다 실제로 압축된 경우에만
             // anchor를 신뢰한다. 다만 위의 좁은 HWPX block-TAC nested-table 형상은
             // extent와 자체 측정값이 같아도 문단별 vpos가 하위 표의 실제 위치를
