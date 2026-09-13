@@ -1686,6 +1686,29 @@ impl Paragraph {
         Some(result_id)
     }
 
+    /// 제어 전용 문단이 완전한 8유닛 스트림일 때 control의 원시 위치.
+    pub(crate) fn empty_control_stream_position(&self, control_index: usize) -> Option<u32> {
+        // 논리 커서 칸과 달리 secd/cold/head/foot도 원시 스트림에서는 8유닛이다.
+        // 다른 부수 마커나 생략된 제어가 있는 스트림에는 이 완전 대응을 추정하지 않는다.
+        if !self.text.is_empty()
+            || !self.char_offsets.is_empty()
+            // HWPX 구역 머리의 재기준화된 축은 control 개수만으로 역산하지 않는다.
+            || self.hwpx_axis_shift != 0
+            || !self.title_marks.is_empty()
+            || !self.field_ranges.is_empty()
+            || !self.orphan_field_ends.is_empty()
+            || control_index >= self.controls.len()
+            || self.char_count
+                != u32::try_from(self.controls.len())
+                    .ok()?
+                    .checked_mul(8)?
+                    .checked_add(1)?
+        {
+            return None;
+        }
+        u32::try_from(control_index).ok()?.checked_mul(8)
+    }
+
     /// 인라인 컨트롤이 텍스트의 어느 character 인덱스에 위치하는지 반환한다.
     ///
     /// 일반 경로에서는 `char_offsets` 갭 (인라인 컨트롤당 8 UTF-16 코드 유닛) 의 길이만으로
