@@ -34,24 +34,40 @@ fn digit_boxes(align: Alignment, left: i16, right: i16, stored: bool) -> Vec<(f6
     let mut core = DocumentCore::new_empty();
     core.set_document(document);
     let layout: Value = serde_json::from_str(
-        &core.get_page_control_layout_native(0).expect("render digit line"),
+        &core
+            .get_page_control_layout_native(0)
+            .expect("render digit line"),
     )
     .expect("control layout JSON");
     let mut boxes: Vec<_> = layout["controls"]
         .as_array()
         .expect("controls")
         .iter()
-        .filter(|control| control["stableIndex"].as_array().is_some_and(|path| path.len() > 3))
+        .filter(|control| {
+            control["stableIndex"]
+                .as_array()
+                .is_some_and(|path| path.len() > 3)
+        })
         .map(|control| {
             let number = |name| control[name].as_f64().expect("table coordinate");
             (number("x"), number("y"), number("w"))
         })
         .collect();
     boxes.sort_by(|a, b| a.0.total_cmp(&b.0));
-    assert_eq!(boxes.len(), 2, "both independently editable digit tables remain");
-    assert!((boxes[0].1 - boxes[1].1).abs() < 0.15, "digits share their line");
+    assert_eq!(
+        boxes.len(),
+        2,
+        "both independently editable digit tables remain"
+    );
+    assert!(
+        (boxes[0].1 - boxes[1].1).abs() < 0.15,
+        "digits share their line"
+    );
     for (_, _, width) in &boxes {
-        assert!((width - 28.8).abs() < 0.15, "outer margins must not resize the table");
+        assert!(
+            (width - 28.8).abs() < 0.15,
+            "outer margins must not resize the table"
+        );
     }
     boxes
 }
@@ -84,5 +100,8 @@ fn table_only_layout_keeps_counting_outer_margins_once() {
     // would double-count them here.
     let boxes = digit_boxes(Alignment::Right, 360, 720, false);
     let end = boxes[1].0 + boxes[1].2 + 720.0 * 96.0 / 7200.0;
-    assert!((end - FRAME_RIGHT).abs() < 0.2, "table-only footprint ends at {end}");
+    assert!(
+        (end - FRAME_RIGHT).abs() < 0.2,
+        "table-only footprint ends at {end}"
+    );
 }
