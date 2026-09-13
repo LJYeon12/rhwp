@@ -89,12 +89,13 @@ impl PartialEq for MetricEvidence {
     }
 }
 
-type StyleKey = (u64, bool, bool, char);
+type StyleKey = (u64, u64, bool, bool, char);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SupplementalMetric {
     family: String,
     size_bits: u64,
+    ratio_bits: u64,
     bold: bool,
     italic: bool,
     character: char,
@@ -109,6 +110,14 @@ fn effective_size(style: &TextStyle) -> Result<f64, MetricError> {
     Ok(style.script_draw_metrics(style.font_size, 0.0).0)
 }
 
+fn ratio_key(style: &TextStyle) -> Result<u64, MetricError> {
+    if !style.ratio.is_finite() {
+        return Err(MetricError::InvalidStyle);
+    }
+    // Match layout and paint's existing nonpositive-ratio fallback.
+    Ok(if style.ratio > 0.0 { style.ratio } else { 1.0 }.to_bits())
+}
+
 fn single_scalar_cluster(text: &str) -> Result<char, MetricError> {
     let mut chars = text.chars();
     match (chars.next(), chars.next()) {
@@ -118,6 +127,35 @@ fn single_scalar_cluster(text: &str) -> Result<char, MetricError> {
 }
 
 impl SupplementalMetric {
+    /// Canvas measureText returns an advance at the actual (possibly condensed)
+    /// CSS size. Convert it once before the common layout applies document ratio.
+    /// The owner must still verify session/backend and normal positioned-paint
+    /// capability; this constructor is not permission to reuse another backend.
+    pub fn from_canvas_measurement(
+        style: &TextStyle,
+        cluster: &str,
+        requested_descriptor: &str,
+        resolved_descriptor: String,
+        measured_advance_px: f64,
+    ) -> Result<Self, MetricError> {
+        effective_size(style)?;
+        ratio_key(style)?;
+        if style.font_family.len() > MAX_SUPPLEMENTAL_KEY_BYTES
+            || requested_descriptor.len() > MAX_SUPPLEMENTAL_KEY_BYTES
+            || resolved_descriptor.len() > MAX_SUPPLEMENTAL_KEY_BYTES
+        {
+            return Err(MetricError::LimitExceeded);
+        }
+        let font = super::canvas_text_font::CanvasTextFont::for_positioned_text(style, 0.0);
+        if requested_descriptor != font.descriptor() {
+            return Err(MetricError::InvalidDescriptor);
+        }
+        let natural = font
+            .natural_advance(measured_advance_px)
+            .ok_or(MetricError::InvalidAdvance)?;
+        Self::backend_measured(style, cluster, resolved_descriptor, natural)
+    }
+
     /// The descriptor must be the final Canvas2D paint descriptor, not a presence
     /// probe. The provider is responsible for measuring after fonts are ready.
     pub fn backend_measured(
@@ -188,6 +226,7 @@ impl SupplementalMetric {
         Ok(Self {
             family: style.font_family.clone(),
             size_bits: effective_size(style)?.to_bits(),
+            ratio_bits: ratio_key(style)?,
             bold: style.bold,
             italic: style.italic,
             character: single_scalar_cluster(cluster)?,
@@ -212,7 +251,13 @@ impl SupplementalMetric {
     }
 
     fn key(&self) -> StyleKey {
-        (self.size_bits, self.bold, self.italic, self.character)
+        (
+            self.size_bits,
+            self.ratio_bits,
+            self.bold,
+            self.italic,
+            self.character,
+        )
     }
 }
 
@@ -251,6 +296,7 @@ impl SupplementalMetricSnapshot {
         let size = effective_size(style).ok()?;
         self.families.get(style.font_family.as_str())?.get(&(
             size.to_bits(),
+            ratio_key(style).ok()?,
             style.bold,
             style.italic,
             character,

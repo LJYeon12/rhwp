@@ -13,7 +13,9 @@ export interface CanvasSupplementalMetric extends SupplementalMetricRequest {
   evidence: 'backendMeasured';
   /** Read back from the context after the normal substitution setter. */
   resolvedFont: string;
-  naturalAdvancePx: number;
+  /** Unscaled measureText width at `font`'s actual CSS size, not the Rust
+   * pre-document-ratio advance. Rust's shared paint setup performs conversion. */
+  measuredAdvancePx: number;
 }
 
 export interface SupplementalMetricGeneration {
@@ -146,12 +148,12 @@ export class CanvasSupplementalMetricProvider {
       if (!resolvedFont || context.font !== resolvedFont) {
         throw new Error('Canvas rejected supplemental metric font descriptor');
       }
-      const naturalAdvancePx = context.measureText(request.cluster).width;
-      if (!Number.isFinite(naturalAdvancePx) || naturalAdvancePx < 0) {
+      const measuredAdvancePx = context.measureText(request.cluster).width;
+      if (!Number.isFinite(measuredAdvancePx) || measuredAdvancePx < 0) {
         throw new Error('Invalid Canvas2D supplemental advance');
       }
       const entry: CanvasSupplementalMetric = {
-        ...request, resolvedFont, naturalAdvancePx,
+        ...request, resolvedFont, measuredAdvancePx,
         backend: 'canvas2d', evidence: 'backendMeasured',
       };
       bytes += requestBytes(entry) + utf8.encode(resolvedFont).length;

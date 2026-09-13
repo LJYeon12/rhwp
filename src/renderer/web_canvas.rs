@@ -2240,32 +2240,15 @@ impl Renderer for WebCanvasRenderer {
         // [Task #528] Hanyang-PUA 옛한글 → KS X 1026-1:2007 자모 시퀀스 (KTUG 매핑).
         let text = &expand_pua_old_hangul_canvas(text);
 
-        // 글꼴 설정
-        let font_weight = if style.bold { "bold " } else { "" };
-        let font_style = if style.italic { "italic " } else { "" };
-        let base_font_size = if style.font_size > 0.0 {
-            style.font_size
-        } else {
-            12.0
-        };
-
-        // 위첨자/아래첨자: 글꼴 크기 축소 + y좌표 조정
-        let (font_size, y) = style.script_draw_metrics(base_font_size, y);
-        // [#5821] 압축 장평은 세로도 √r — SSOT 는 condensed_ratio_draw_params.
-        let (font_size, ratio) =
-            crate::renderer::condensed_ratio_draw_params(font_size, style.ratio);
+        // Provider and paint share script size, condensed ratio and CSS rounding.
+        let font_setup = super::canvas_text_font::CanvasTextFont::for_positioned_text(style, y);
+        let font_size = font_setup.draw_size();
+        let y = font_setup.baseline();
+        let ratio = font_setup.horizontal_scale();
         let has_ratio = (ratio - 1.0).abs() > 0.01;
-        let font_family = super::canvas_font_family_chain(&style.font_family);
-
-        let font = format!(
-            "{}{}{:.3}px {}",
-            font_style, font_weight, font_size, font_family
-        );
-        let old_hangul_font = format!(
-            "{}{}{:.3}px 'Source Han Serif K Old Hangul', {}",
-            font_style, font_weight, font_size, font_family
-        );
-        self.ctx.set_font(&font);
+        let font = font_setup.descriptor();
+        let old_hangul_font = font_setup.old_hangul_descriptor();
+        self.ctx.set_font(font);
 
         // 클러스터 분할
         let clusters = split_into_clusters(text);
@@ -2303,8 +2286,8 @@ impl Renderer for WebCanvasRenderer {
                     font_size,
                     ratio,
                     has_ratio,
-                    &font,
-                    &old_hangul_font,
+                    font,
+                    old_hangul_font,
                 );
                 // 효과 pass에서는 raw PUA를 건너뛰고, 사각 안 숫자는 한 번만 합성한다.
                 // CanvasKit도 이 대역에 글리프가 없을 때 동일한 bounded vector fallback을 쓴다.
@@ -2332,9 +2315,9 @@ impl Renderer for WebCanvasRenderer {
                         continue;
                     }
                     if super::contains_old_hangul_jamo(cluster_str) {
-                        self.ctx.set_font(&old_hangul_font);
+                        self.ctx.set_font(old_hangul_font);
                     } else {
-                        self.ctx.set_font(&font);
+                        self.ctx.set_font(font);
                     }
                     // XML/HTML 무효 제어문자 건너뜀 (SVG의 escape_xml과 동일)
                     if cluster_str
@@ -2369,7 +2352,7 @@ impl Renderer for WebCanvasRenderer {
                         self.ctx.set_font(&fallback_font);
                         let _ = self.ctx.fill_text(cluster_str, char_x, y);
                         self.ctx.restore();
-                        self.ctx.set_font(&font); // 원래 폰트 복원
+                        self.ctx.set_font(font); // 원래 폰트 복원
                         continue;
                     }
 

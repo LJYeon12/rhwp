@@ -32,7 +32,7 @@ test('waits for fonts and measures using the normal substituted descriptor', asy
   const result = await pending;
   assert.equal(result.status, 'ready');
   if (result.status !== 'ready') throw new Error('missing result');
-  assert.equal(result.metrics[0].naturalAdvancePx, 18.3);
+  assert.equal(result.metrics[0].measuredAdvancePx, 18.3);
   assert.equal(result.metrics[0].resolvedFont, '13.333px resolved-HCR,fallback');
   assert.equal(result.metrics[0].evidence, 'backendMeasured');
   assert.equal(result.metrics[0].backend, 'canvas2d');
@@ -42,13 +42,13 @@ test('warm batches do not create a context or measure again', async () => {
   const f = fixture();
   const first = await f.provider.prepare(generation, requests, ready, f.create);
   if (first.status !== 'ready') throw new Error('missing result');
-  first.metrics[0].naturalAdvancePx = 99; // returned data cannot corrupt cache
+  first.metrics[0].measuredAdvancePx = 99; // returned data cannot corrupt cache
   const result = await f.provider.prepare(generation, requests, ready, () => {
     throw new Error('warm cache unexpectedly created Canvas');
   });
   assert.equal(result.status, 'ready');
   if (result.status !== 'ready') throw new Error('missing result');
-  assert.equal(result.metrics[0].naturalAdvancePx, 18.3);
+  assert.equal(result.metrics[0].measuredAdvancePx, 18.3);
   assert.equal(result.measured, 0);
   assert.equal(result.cacheHits, 1);
   assert.equal(f.calls(), 1);
@@ -104,7 +104,7 @@ test('invalid advances and unsupported clusters are not successes', async () => 
   const zero = fixture(0);
   const result = await zero.provider.prepare(generation, requests, ready, zero.create);
   if (result.status !== 'ready') throw new Error('missing result');
-  assert.equal(result.metrics[0].naturalAdvancePx, 0);
+  assert.equal(result.metrics[0].measuredAdvancePx, 0);
 });
 
 test('font replacement clears the cache even for identical CSS inputs', async () => {

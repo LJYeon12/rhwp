@@ -8,6 +8,7 @@ use rhwp::renderer::supplemental_metrics::{
     SupplementalMetricStore, MAX_SUPPLEMENTAL_ENTRIES, MAX_SUPPLEMENTAL_KEY_BYTES,
 };
 use rhwp::renderer::TextStyle;
+use rhwp::renderer::canvas_text_font::CanvasTextFont;
 
 fn context() -> MetricContext {
     MetricContext {
@@ -42,6 +43,109 @@ fn positions(text: &str, style: &TextStyle) -> Vec<f64> {
 
 fn near(a: f64, b: f64) {
     assert!((a - b).abs() < 1e-8, "actual={a}, expected={b}");
+}
+
+#[test]
+fn canvas_font_setup_preserves_positioned_painter_contract() {
+    let s = TextStyle { bold: true, italic: true, ratio: 0.81, superscript: true, ..style() };
+    let font = CanvasTextFont::for_positioned_text(&s, 100.0);
+    let family = rhwp::renderer::canvas_font_family_chain("HCR Batang");
+    assert_eq!(font.descriptor(), format!("italic bold 12.600px {family}"));
+    assert_eq!(font.old_hangul_descriptor(), format!("italic bold 12.600px 'Source Han Serif K Old Hangul', {family}"));
+    near(font.draw_size(), 12.6);
+    near(font.horizontal_scale(), 0.9);
+    near(font.baseline(), 94.0);
+    let sub = CanvasTextFont::for_positioned_text(&TextStyle { superscript: false, subscript: true, ..s }, 100.0);
+    near(sub.baseline(), 103.0);
+    assert_eq!(sub.descriptor(), font.descriptor());
+}
+
+#[test]
+fn measured_canvas_advance_matches_paint_after_ratio_exactly_once() {
+    // Actual measureText outputs, not assumed 1em squares. Include the legacy
+    // condensation threshold and nonpositive-ratio default on both sides.
+    for (ratio, paint_scale) in [(0.64, 0.8), (0.81, 0.9), (0.999, 0.999), (1.0, 1.0), (1.2, 1.2), (0.0, 1.0), (-1.0, 1.0)] {
+        for script in [false, true] {
+            let mut s = TextStyle { ratio, superscript: script, ..style() };
+            let font = CanvasTextFont::for_positioned_text(&s, 0.0);
+            let entry = SupplementalMetric::from_canvas_measurement(
+                &s, "😀", font.descriptor(), "browser-resolved font".into(), 27.531,
+            ).unwrap();
+            let _store = bound(&mut s, vec![entry]);
+            near(positions("😀", &s)[1], 27.531 * paint_scale);
+        }
+    }
+}
+
+#[test]
+fn canvas_css_rounding_is_not_undone_by_advance_conversion() {
+    let mut s = TextStyle { font_size: 13.333333, ratio: 0.8, ..style() };
+    let font = CanvasTextFont::for_positioned_text(&s, 0.0);
+    assert!(font.descriptor().starts_with("11.926px "));
+    // The provider may have nonlinear optical metrics at this CSS size. Keep
+    // its measured result; do not infer it from nominal or unrounded font size.
+    let entry = SupplementalMetric::from_canvas_measurement(
+        &s, "😀", font.descriptor(), "11.926px resolved-face".into(), 16.731,
+    ).unwrap();
+    let _store = bound(&mut s, vec![entry]);
+    near(positions("😀", &s)[1], 16.731 * 0.8_f64.sqrt());
+}
+
+#[test]
+fn canvas_descriptor_must_match_requested_style_before_registration() {
+    let s = style();
+    let font = CanvasTextFont::for_positioned_text(&s, 0.0);
+    let changed = TextStyle { bold: true, ..s.clone() };
+    assert_eq!(SupplementalMetric::from_canvas_measurement(
+        &changed, "😀", font.descriptor(), "resolved-face".into(), 27.5,
+    ), Err(MetricError::InvalidDescriptor));
+    // Browser substitution/canonicalization may legitimately differ from input.
+    let entry = SupplementalMetric::from_canvas_measurement(
+        &s, "😀", font.descriptor(), "20px browser-fallback".into(), 27.5,
+    ).unwrap();
+    assert_eq!(entry.evidence(), &MetricEvidence::BackendMeasured { descriptor: "20px browser-fallback".into() });
+}
+
+#[test]
+fn measured_descriptor_cannot_leak_to_a_different_document_ratio() {
+    let mut s = TextStyle { ratio: 0.8, ..style() };
+    let font = CanvasTextFont::for_positioned_text(&s, 0.0);
+    let entry = SupplementalMetric::from_canvas_measurement(
+        &s, "😀", font.descriptor(), "resolved-face".into(), 25.0,
+    ).unwrap();
+    let _store = bound(&mut s, vec![entry]);
+    let changed = TextStyle { ratio: 0.9, ..s.clone() };
+    assert!(s.supplemental_metrics.as_ref().unwrap().lookup(context(), &changed, '😀').is_none());
+    let plain = TextStyle { supplemental_metrics: None, ..changed.clone() };
+    assert_eq!(positions("😀", &changed), positions("😀", &plain));
+}
+
+#[test]
+fn canvas_registration_rejects_invalid_units_without_changing_paint_defaults() {
+    let s = style();
+    let font = CanvasTextFont::for_positioned_text(&s, 0.0);
+    for width in [f64::NAN, f64::INFINITY, -1.0] {
+        assert_eq!(SupplementalMetric::from_canvas_measurement(
+            &s, "😀", font.descriptor(), "resolved-face".into(), width,
+        ), Err(MetricError::InvalidAdvance));
+    }
+    for ratio in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let invalid = TextStyle { ratio, ..s.clone() };
+        assert_eq!(SupplementalMetric::from_canvas_measurement(
+            &invalid, "😀", font.descriptor(), "resolved-face".into(), 27.5,
+        ), Err(MetricError::InvalidStyle));
+    }
+    let invalid = TextStyle { font_size: 0.0, ..s.clone() };
+    let fallback = CanvasTextFont::for_positioned_text(&invalid, 0.0);
+    assert!(fallback.descriptor().starts_with("12.000px "));
+    assert_eq!(SupplementalMetric::from_canvas_measurement(
+        &invalid, "😀", fallback.descriptor(), "resolved-face".into(), 27.5,
+    ), Err(MetricError::InvalidStyle));
+    let tiny = TextStyle { font_size: 0.00001, ..s };
+    let tiny_font = CanvasTextFont::for_positioned_text(&tiny, 0.0);
+    assert_eq!(SupplementalMetric::from_canvas_measurement(
+        &tiny, "😀", tiny_font.descriptor(), "resolved-face".into(), 27.5,
+    ), Err(MetricError::InvalidAdvance));
 }
 
 #[test]
