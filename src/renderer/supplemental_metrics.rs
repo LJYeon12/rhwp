@@ -49,7 +49,7 @@ pub enum MetricError {
 
 /// Paint must consume this evidence too. A verified source is not, by itself,
 /// proof that a particular backend has loaded the font.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum MetricEvidence {
     BackendMeasured {
         descriptor: String,
@@ -60,6 +60,33 @@ pub enum MetricEvidence {
         glyph_id: u16,
         bytes: Arc<[u8]>,
     },
+}
+
+impl PartialEq for MetricEvidence {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::BackendMeasured { descriptor: a }, Self::BackendMeasured { descriptor: b }) => {
+                a == b
+            }
+            (
+                Self::VerifiedSource {
+                    sha256: a,
+                    face_index: af,
+                    glyph_id: ag,
+                    ..
+                },
+                Self::VerifiedSource {
+                    sha256: b,
+                    face_index: bf,
+                    glyph_id: bg,
+                    ..
+                },
+            ) => a == b && af == bf && ag == bg,
+            _ => false,
+        }
+        // Hashes are computed from validated bytes by the private entry builder.
+        // Do not compare a multi-MiB font payload again for every cached glyph.
+    }
 }
 
 type StyleKey = (u64, bool, bool, char);

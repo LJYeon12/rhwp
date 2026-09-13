@@ -1248,8 +1248,10 @@ pub(crate) fn char_width_decision<'a>(
     };
     // Only replace the generic unknown-width decision, not DB hits or HWP's
     // explicit width rules. Synthetic PUA boxes are painted as shapes, not glyphs.
+    let dash_leader = is_dash_leader_run(chars, i);
     let supplement = (allow_supplemental
         && width_source == "heuristicHalfwidth"
+        && !dash_leader
         && !c.is_whitespace()
         && !c.is_control()
         && crate::renderer::boxed_pua_number(c).is_none())
@@ -1261,7 +1263,6 @@ pub(crate) fn char_width_decision<'a>(
     let (base_width_raw, width_source) = supplement
         .map(|entry| (entry.natural_advance_px(), entry.width_source()))
         .unwrap_or((base_width_raw, width_source));
-    let dash_leader = is_dash_leader_run(chars, i);
     let base_width_px = if dash_leader {
         base_width_raw.min(font_size * 0.3)
     } else {

@@ -56,9 +56,9 @@ fn missing_advance_is_shared_by_total_and_following_positions() {
     for i in 1..new.len() {
         near(new[i] - old[i], 17.5);
     }
-    // The public estimate intentionally retains its pre-existing 0.01px rounding.
+    // The public estimate intentionally retains its pre-existing integer rounding.
     let total = EmbeddedTextMeasurer.estimate_text_width("😀A한", &prepared);
-    assert!((total - new.last().unwrap()).abs() <= 0.01);
+    near(total, new.last().unwrap().round());
     let snapshot = prepared.supplemental_metrics.as_ref().unwrap();
     assert_eq!(
         snapshot
@@ -105,6 +105,31 @@ fn ratio_and_spacing_are_applied_once_after_natural_advance() {
         let _store = bound(&mut prepared, vec![entry]);
         near(positions("😀", &prepared)[1], expected);
     }
+}
+
+#[test]
+fn dash_leader_keeps_explicit_advance_with_missing_family() {
+    let original = TextStyle {
+        font_family: "unknown-test-face".into(),
+        ..style()
+    };
+    let mut prepared = original.clone();
+    let _store = bound(&mut prepared, vec![measured(&original, "-", 1.0)]);
+    assert_eq!(positions("---", &prepared), positions("---", &original));
+}
+
+#[test]
+fn replacing_valid_batch_invalidates_old_styles_until_rebound() {
+    let mut prepared = style();
+    let original = prepared.clone();
+    let entry = measured(&prepared, "😀", 27.5);
+    let mut store = bound(&mut prepared, vec![entry]);
+    store
+        .replace(context(), vec![measured(&original, "😀", 31.0)])
+        .unwrap();
+    assert_eq!(positions("😀", &prepared), positions("😀", &original));
+    store.bind_style(context(), &mut prepared).unwrap();
+    near(positions("😀", &prepared)[1], 31.0);
 }
 
 #[test]
