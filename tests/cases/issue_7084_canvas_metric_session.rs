@@ -64,7 +64,7 @@ fn entries(run: &TextRunNode) -> Vec<SupplementalMetric> {
 fn canvas_session_switch_rebuilds_positions_and_protects_portable_output() {
     for ext in ["hwp", "hwpx"] {
         let mut core = core(ext);
-        let original = serde_json::to_value(core.document()).unwrap();
+        let original = format!("{:?}", core.document());
         let baseline = run(&core);
         let svg = core.render_page_svg_native(0).unwrap();
         core.begin_canvas_metric_session(context()).unwrap();
@@ -92,7 +92,7 @@ fn canvas_session_switch_rebuilds_positions_and_protects_portable_output() {
         assert_eq!(run(&core).layout_positions, baseline.layout_positions);
         assert_eq!(core.render_page_svg_native(0).unwrap(), svg);
         assert_eq!(
-            serde_json::to_value(core.document()).unwrap(),
+            format!("{:?}", core.document()),
             original,
             "metrics must not edit document IR"
         );
@@ -156,4 +156,25 @@ fn document_replacement_drops_owner_and_batch_rejects_metric_mutation() {
         Err(MetricError::ContextMismatch)
     );
     assert_eq!(run(&core).layout_positions, baseline.layout_positions);
+}
+
+#[test]
+fn cell_format_batch_keeps_metric_binding_when_style_ids_change() {
+    let mut core = core("hwp");
+    let baseline = run(&core);
+    core.begin_canvas_metric_session(context()).unwrap();
+    core.register_canvas_metrics(context(), entries(&baseline))
+        .unwrap();
+    core.select_canvas_metrics(true).unwrap();
+    let before = run(&core);
+    core.begin_batch_native().unwrap();
+    core.apply_char_format_in_cell_native(0, 12, 1, 5, 0, 0, 3, r##"{"textColor":"#ff0000"}"##)
+        .unwrap();
+    core.end_batch_native().unwrap();
+    let after = run(&core);
+    assert_ne!(after.char_shape_id, before.char_shape_id);
+    assert!(after.style.supplemental_metrics.is_some());
+    assert_eq!(after.layout_positions, before.layout_positions);
+    core.select_canvas_metrics(false).unwrap();
+    assert_ne!(run(&core).layout_positions, after.layout_positions);
 }
