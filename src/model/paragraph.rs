@@ -1692,6 +1692,8 @@ impl Paragraph {
         // 다른 부수 마커나 생략된 제어가 있는 스트림에는 이 완전 대응을 추정하지 않는다.
         if !self.text.is_empty()
             || !self.char_offsets.is_empty()
+            // HWPX 구역 머리의 재기준화된 축은 control 개수만으로 역산하지 않는다.
+            || self.hwpx_axis_shift != 0
             || !self.title_marks.is_empty()
             || !self.field_ranges.is_empty()
             || !self.orphan_field_ends.is_empty()

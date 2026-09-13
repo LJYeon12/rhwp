@@ -19760,12 +19760,22 @@ impl TypesetEngine {
             && st.side_wrap_exclusions.is_empty()
         {
             if let Some(lines) = super::composer::stored_tac_lines(para) {
-                let origin = st.current_height
+                let flow_origin = st.current_height
                     + if st.current_height < 1.0 {
                         0.0
                     } else {
                         fmt.spacing_before
                     };
+                // 앞 문단의 저장 사다리가 누적 높이보다 앞서 있으면 그 앵커를
+                // fit와 paint에 함께 보존한다. 문단 상대 top만 더하면 앞 표로 되감긴다.
+                let saved_origin = st.vpos_col_anchor
+                    + hwpunit_to_px(
+                        para.line_segs[0]
+                            .vertical_pos
+                            .saturating_sub(st.vpos_page_base.or(st.vpos_lazy_base).unwrap_or(0)),
+                        self.dpi,
+                    );
+                let origin = flow_origin.max(saved_origin);
                 let measured_fits = lines.iter().all(|line| {
                     let Some(Control::Table(table)) = para.controls.get(line.control) else {
                         return false;
