@@ -86,6 +86,38 @@ enum Exempt {
 ///
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
 const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
+    // #7084 render-session APIs do not mutate serialized document state.
+    // issue_7084_canvas_metric_session checks original HWP/HWPX IR and portable SVG preservation.
+    (
+        "canvas_metric_requests.rs",
+        "collect_canvas_metric_requests",
+        Exempt::SessionState,
+        "#7084: 원문에서 측정 요청을 읽고 세션의 pending ticket만 갱신한다. 원문 IR 보존은 collected_original_requests_register_and_preserve_ir_and_portable_svg에서 검사한다.",
+    ),
+    (
+        "canvas_metric_requests.rs",
+        "register_canvas_metric_replies",
+        Exempt::SessionState,
+        "#7084: 요청 세대·descriptor 검증 후 렌더 전용 측정 snapshot을 등록한다. 원문·원본 스트림은 변경하지 않으며 실패 원자성과 정상 IR 보존을 issue_7084_canvas_metric_session에서 검사한다.",
+    ),
+    (
+        "canvas_metrics.rs",
+        "begin_canvas_metric_session",
+        Exempt::SessionState,
+        "#7084: 문서/폰트/backend 세대의 측정 소유자와 파생 조판 상태만 교체한다. canvas_session_switch_rebuilds_positions_and_protects_portable_output에서 IR 무변경을 검사한다.",
+    ),
+    (
+        "canvas_metrics.rs",
+        "register_canvas_metrics",
+        Exempt::SessionState,
+        "#7084: 보충 진행폭 store와 파생 조판만 갱신한다. canvas_session_switch_rebuilds_positions_and_protects_portable_output에서 IR·portable 출력 보존을 검사한다.",
+    ),
+    (
+        "canvas_metrics.rs",
+        "select_canvas_metrics",
+        Exempt::SessionState,
+        "#7084: Canvas/portable 렌더 문맥만 전환하고 저장 원본은 보존한다. collected_original_requests_register_and_preserve_ir_and_portable_svg에서 전환 전후를 대조한다.",
+    ),
     (
         "commands/paragraph_block/import_json.rs",
         "import_paragraph_block_json_native",
