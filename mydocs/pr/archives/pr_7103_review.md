@@ -36,10 +36,21 @@ last_verified: 2026-09-13
 Authentication error: Authentication required: You must have push access to verify locks
 ```
 
-따라서 no-op 결과를 쓰기 권한 확인으로 세지 않는다. 현재 설정의 fork push 경로는 사용 불가다.
-PR 수정 허용과 fork 전체 push 권한은 구분한다. LFS 검사를 끄거나 실제 push를 시도하지 않았으며,
-API 재조회한 원격 head는 위 source SHA 그대로다. 검토·보정의 기본 경로는 최신 devel 기반 통합
-branch다. 원격 변경은 작업지시자의 해당 승인 후 처리한다.
+따라서 no-op 결과를 쓰기 권한 확인으로 세지 않는다. 이후 저장소 절차
+[9.3.0 LFS 대상 사전 판독](../../manual/pr_review/collaborator_external_pr.md#930-lfs-대상-사전-판독)을
+다시 확인했다. 권한 점검용 빈 commit의 source 대비 변경 파일은 없고 `git lfs status`의 새 object
+목록도 비어 있었다. 이 경우 절차가 정한 `GIT_LFS_SKIP_PUSH=1`을 적용한 fast-forward dry-run은
+**exit 0, `1c5fd9676..b14e522b2`로 통과**했다. 실제 ref update는 수행하지 않았다.
+
+**이전의 “fork push 경로 사용 불가” 판단은 정정한다.** fork 전체의 `push: false`와 해당 PR의
+수정 허용 경로를 구분해야 하며, 첫 실패는 변경과 무관한 LFS lock 확인이었다. 이번 결과는
+비LFS 변경의 dry-run 통과이지 실제 push 또는 향후 LFS object 쓰기 성공 증명은 아니다.
+
+작업지시자가 요청한 체리픽 통합 경로도 사용 가능하다. 원본 저장소 `edwardkim/rhwp`에 대한
+`jangster77`의 `push: true`를 API로 확인했으며, 다시 fetch한 최신 `upstream/devel`은 위 기준 SHA와
+같고 현재 검토 branch의 조상이다. 원격 contributor head도 위 source SHA 그대로다.
+보정은 현재 로컬 통합 branch의 별도 commit으로 진행하고, 검증 후 원본 저장소 임시 branch에서
+통합 PR을 만드는 경로를 사용한다. 현재 원격 push/PR 생성/merge/close를 완료한 것은 아니다.
 
 ## 2. 보류 사유
 
@@ -173,3 +184,15 @@ OVL은 R=한컴 gray, G=B=후보 gray다. 글자 프린지는 font 환경 차이
   형식으로 고정하고 `gh pr comment ... --body-file`로 게시한 뒤 API 재조회한다.
 - 승인된 통합 PR 경로를 쓰면 merge된 통합 PR과 반영 SHA를 원 PR에 명시하고 후속 close를 처리한다.
   #7096은 확인한 해결 범위에 따라 처리한다. 지금 close/merge 완료로 기록하지 않는다.
+
+
+## 6. 메인터너 보정·체리픽 처리 가능 여부
+
+**처리 경로는 가능하다. 보정 구현과 최종 수용 판정은 아직 미완료다.** 원 contributor commit은 이미
+최신 devel 위에 저자·source SHA를 보존해 적용했다. 같은 branch에서 원 commit을 다시 cherry-pick하지
+않는다. [보정 범위와 검증 계획](pr_7103_review_impl.md)에 공통 줄 소속과 줄 advance의 수정 지점,
+검증 및 통합 후 원 PR 처리 순서를 기록했다.
+
+기존 focused 3개·OVR5·source CI 통과는 **보정 전 후보**의 증거다. 보정 commit에 그대로 승계하여
+`메인터너 보정 후 수용 가능`으로 올리지 않는다. 원 head의 F1/F2를 수정한 정확한 보정 SHA와
+통합 검증 결과가 확보될 때만 최종 판정을 갱신한다.
