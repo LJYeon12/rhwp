@@ -2,9 +2,10 @@
 
 - 일자: 2026-09-13
 - 계획: [구현계획](../plans/task_m100_7084_impl.md)
-- 상태: **B 진행 중. 측정 준비부만 구현·검증. Studio 재조판/paint 활성화 미완료.**
+- 상태: **B 진행 중. 측정 준비부 및 공통 Canvas 폰트 설정·폭 단위 환산 구현. Studio 재조판/paint 활성화 미완료.**
 - 선행: [A 결과](task_m100_7084_stage2.md), 인계 `b9b271238`.
-- 이번 제품/테스트 SHA: `eef7b3293f803ca3f8b702419c381f512e808b44`.
+- 최초 준비부 제품/테스트 SHA: `eef7b3293f803ca3f8b702419c381f512e808b44`.
+- 공통 설정 후속 제품/테스트 SHA: `2364c51f37fefde1b04b68e7c2509e6828659393`.
 
 ## 1. 이번에 구현한 범위
 
@@ -51,10 +52,11 @@ A의 `MetricContext.backend`와 등록 거부 검사는 **자료의 세대와 �
 축소 장평에서는 기존 규칙에 따라 각각 √ratio를 사용한다.
 반면 A의 `SupplementalMetric`은 첨자 적용 크기에서의 **장평 적용 전 자연 advance**를 기대한다.
 
-이번 준비부의 `naturalAdvancePx`는 요청받은 **실제 CSS descriptor 크기에서의 측정값**이다.
+최초 준비부의 `naturalAdvancePx`는 요청받은 **실제 CSS descriptor 크기에서의 측정값**이었다.
 이를 A에 그대로 넣으면 축소 장평을 중복 적용할 수 있다. 다음 연결에서 공유 font 설정 결과를 통해
 측정 크기와 기준 크기를 명시적으로 환산하고, 측정 키와 실제 paint descriptor의 정합을 검사해야 한다.
 장평 100%의 emoji 한 개만 통과하는 조건을 전체 서식 통과로 간주하지 않는다.
+이 단위 문제는 아래 5절에서 공통 설정·환산과 `measuredAdvancePx` 명칭으로 보완했다.
 
 ## 3. 실행 검증
 
@@ -74,7 +76,7 @@ npx tsc --noEmit
 실제 OS 폰트·브라우저·한컴 출력 일치의 증거가 아니다. 신규 WASM 빌드, browser 시각 판정,
 전체 npm/Rust 회귀는 수행하지 않았다. 이 준비부를 아직 호출하지 않으므로 기존 렌더링 동작은 유지한다.
 
-## 4. 다음 순서 — 같은 B 절편의 잔여 작업
+## 4. 최초 인계 당시 다음 순서 — 같은 B 절편의 잔여 작업
 
 1. 공유 font 설정 결과에 실제 descriptor·그리기 크기·자연 advance 기준 단위를 묶는다.
 2. RendererSession 수명과 Rust 측정 문맥을 연결하고 backend별 cache 적용/복원을 검증한다.
@@ -84,3 +86,89 @@ npx tsc --noEmit
 
 B의 수용 기준을 충족하지 않았으므로 C 완료나 PR 준비로 넘어가지 않는다.
 이번 turn에서는 별도 이슈·브랜치를 만들지 않았고 원격 push·PR·GitHub 댓글도 하지 않았다.
+
+## 5. 후속 구현 — 공통 폰트 설정과 측정 단위
+
+작업지시자의 다음 절차 승인으로 4절의 1번을 구현했다. `CanvasTextFont`를
+`WebCanvasRenderer::draw_text_positioned`와 `SupplementalMetric::from_canvas_measurement`가
+함께 사용한다. 기존 CSS font family 체인, bold/italic, 첨자 크기·baseline 이동,
+축소 장평의 √ratio 규칙 및 CSS 소수 셋째 자리 표기를 보존한다.
+원본 문서 스타일, 정적 DB, 폰트 배포·설치, 전역 fit 정책은 바꾸지 않는다.
+
+### 5.1 단위와 적용 규칙
+
+| 기호 | 의미 |
+| --- | --- |
+| M | 최종 CSS 크기에서 Canvas `measureText`가 반환한, 아직 가로 transform을 하지 않은 진행폭 |
+| P | 기존 Canvas 그리기의 가로 배율. 축소 장평에서는 √ratio, 확대에서는 ratio |
+| R | 공통 조판의 문서 장평 배율. 기존 계약대로 0 이하이면 1 |
+| N | snapshot에 등록할 조판용 장평 적용 전 진행폭: **M × P / R** |
+
+따라서 자간을 적용하기 전 `N × R = M × P`가 된다. CSS 크기의 반올림이나
+실제 크기에 따른 폰트 메트릭 차이를 다시 nominal 크기로 환산해 없애지 않는다.
+명목 크기에서 재측정한 폭이라는 주장이 아니라, **실제 그리기 진행폭과 일치하는 조판용 기준 폭**이다.
+첨자는 이미 측정 descriptor 크기에 들어 있으므로 환산 과정에서 0.7을 다시 곱하지 않는다.
+
+- TypeScript 필드를 `naturalAdvancePx`에서 **`measuredAdvancePx`**로 바꾸어
+  요청 CSS 크기의 실측값과 Rust의 조판용 기준 폭을 혼동하지 않게 했다.
+- 등록 시 요청 descriptor가 현재 스타일의 공통 설정과 정확히 같은지 검사한다.
+  브라우저의 치환·정규화 후 읽은 descriptor는 별도로 보존하며 exact face로 승격하지 않는다.
+- snapshot key에 장평을 포함했다. 같은 크기·문자라도 장평이 바뀌면 기존 CSS 측정을
+  재사용하지 않고 미측정으로 돌아간다. 자간은 기존 공통 조판에서 후속 적용한다.
+- 비유한 장평, 비정상 advance, CSS 표기상 0px가 되는 극소 크기는 등록하지 않는다.
+  등록 거부를 기존 그리기 fallback까지 변경하는 근거로 삼지 않는다.
+
+### 5.2 검증 기록
+
+`2364c51f3`과 같은 제품·테스트 내용으로 전용 detached 검증 worktree에서 실행했다.
+최초 후보 `547855d1d`에서 집중 테스트 파일의 포맷만 보완한 것이 `2364c51f3`이다.
+
+- Rust 집중 테스트 **21 passed / 0 failed**, 실행 0.13초, 컴파일 포함 1분 30초.
+  기존 A 15건과 공통 설정·장평/첨자 환산·반올림 보존·descriptor 불일치·장평 key·잘못된 입력 6건.
+- Studio 집중 테스트 **10 passed / 0 failed**, 142.66ms; 전체 TypeScript 타입 검사 성공.
+- 전용 worktree의 `cargo fmt --all` 및 `cargo fmt --all -- --check` 성공.
+- 최초 루트 포맷 실행은 오래된 generated suite가 존재하지 않는
+  `issue_6332_snapshot_budget_coupling.rs`를 참조해 실패했다. source 결함이나 회귀로 분류하지 않았다.
+  루트 파생물을 임의 삭제하지 않고 전용 worktree에서 manifest를 준비해 검증했다.
+- 격리 worktree에서 `natural_advance`의 환산만 제거한 음성 대조는 집중 검사 1건이
+  의도대로 실패했다. 장평 64%, 측정 27.531px에서 기대 **22.0248px**, 오구현 **17.61984px**.
+  단위 환산 누락을 실제 제품 측정 API 호출로 검출했으며 사용자 작업트리는 바꾸지 않았다.
+  대조 후 원 구현으로 복원하고 `2364c51f3`과 제품·시험 파일이 같은지 대조했다.
+- 복원 후 Rust 집중 **21 passed / 0 failed**, 0.13초(컴파일 31.47초).
+- native Clippy `-D warnings` **성공**, 1분 00초.
+- WASM32 lib Clippy `-D warnings` **성공**, 55.89초. Docker WASM 패키지 빌드와는 구분한다.
+- 첫 manifest 최종 검사는 test source 포맷 후 길이 가중치가 바뀌어 harness drift를 검출했다.
+  포맷이 끝난 source에서 review 전용 `--prepare`를 다시 실행해 자동 배정을 갱신했다.
+  source test를 삭제하거나 expected 값을 바꾸지 않았다.
+- 최종 manifest **1,306 sources / 48 integration targets** 검사 및 fmt check 성공.
+  최종 자동 배정으로 집중 테스트를 다시 실행해 **21 passed / 0 failed**, 0.11초(컴파일 3.98초)를 확인했다.
+
+주요 실행 명령(검증 worktree, target은 기존 공유 cache):
+
+```bash
+node scripts/rust-test-suite-manifest.mjs --prepare
+cargo fmt --all
+# 포맷 후 source 크기 변화도 자동 배정에 반영
+node scripts/rust-test-suite-manifest.mjs --prepare
+node scripts/rust-test-suite-manifest.mjs --check
+cargo fmt --all -- --check
+node scripts/run-rust-test.mjs --cargo-test issue_7084_supplemental_metrics -- \
+  --target-dir /home/edward/mygithub/rhwp/target/pr-review
+cargo clippy --locked --target-dir /home/edward/mygithub/rhwp/target/pr-review -- -D warnings
+cargo clippy --locked -p rhwp --lib --target wasm32-unknown-unknown \
+  --target-dir /home/edward/mygithub/rhwp/target/pr-review -- -D warnings
+```
+
+workspace build/all-target Clippy, 전체 Rust·Studio 회귀, Native Skia·Render Diff는 아직 미실행이다.
+이번 검증을 PR 직전 전체 게이트 통과로 표시하지 않는다.
+
+집중 테스트의 제어 provider 입력은 한컴 시각 정답지가 아니다. 아직 Docker WASM 재빌드와
+실브라우저 시각 판정을 하지 않았으며, 사용자에게 emoji 압축 해결을 확인 요청할 단계가 아니다.
+
+### 5.3 B의 남은 작업
+
+4절의 2~4번이 남았다. 세션이 backend·폰트 세대를 소유하고 공통 pagination/cache를 함께
+무효화하는 연결, 실제 누락 요청 수집·등록·재조판, 유효 측정과 동일 descriptor로 그리기,
+Docker WASM 두 원본 검증 순서로 진행한다. 특히 기존 fit helper의 첨자 보정까지 그대로
+적용하면 새 측정에 첨자가 이중 적용될 수 있으므로, 유효 보충 자료를 소비하는 paint 경계에서
+같은 측정인지 확인해야 한다. **공통 설정 연결만으로 fit·세션 수명·타 backend 보호가 완료되지는 않는다.**

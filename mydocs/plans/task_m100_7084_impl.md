@@ -2,7 +2,7 @@
 
 - Issue: [#7084](https://github.com/edwardkim/rhwp/issues/7084)
 - 작성일: 2026-09-13
-- 상태: **2026-09-13 A 완료. B 측정 준비부 구현·집중 검증, 재조판/paint 연결은 진행 중.**
+- 상태: **2026-09-13 A 완료. B 측정 준비부·공통 Canvas 폰트 설정·장평 환산 구현, 세션 재조판/paint 연결은 진행 중.**
 - 수행계획: [승인된 R1](task_m100_7084.md)
 - 원인 근거: [Stage 1](../working/task_m100_7084_stage1.md), 보존 commit `7e8b74cdd`.
 - 제품 조사 기준: `ad6174255e6aabfaa48131f3f5f2f6287a93e48a`.
@@ -186,7 +186,9 @@ MCP 접속정보와 로컬 상용 폰트 bytes는 Git에 넣지 않는다.
 구현 범위·명령·첫 검사 오류 정정·미검증 경계는 [Stage 2](../working/task_m100_7084_stage2.md)에 기록했다.
 B의 측정 준비부는 `eef7b3293`에서 집중 10건·TypeScript 검사를 통과했다.
 [Stage 3](../working/task_m100_7084_stage3.md)에 backend 공통 cache와 축소 장평 단위의
-남은 연결 경계를 기록했다. 준비부는 아직 제품 세션에서 호출하지 않는다.
+연결 경계를 기록했다. 후속 `2364c51f3`에서 축소 장평 단위를 보완하고 공통 설정을
+실제 positioned Canvas painter에 연결했다. 집중 Rust 21건·Studio 10건·TypeScript 검사를
+통과했고, 환산을 제거한 음성 대조에서 재압축을 검출했다. 측정 준비부는 아직 제품 세션에서 호출하지 않는다.
 B의 실제 Studio 재조판/paint 연결과 C의 통합 게이트는 아직 완료하지 않았다.
 원격 push·PR·GitHub 댓글은 수행하지 않았다.
 
