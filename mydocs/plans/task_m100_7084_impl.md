@@ -2,7 +2,7 @@
 
 - Issue: [#7084](https://github.com/edwardkim/rhwp/issues/7084)
 - 작성일: 2026-09-13
-- 상태: **2026-09-13 A 완료. B 실제 Studio 연결·Docker WASM·Chrome 실측 완료, 작업지시자 시각 판정 대기. C 전체 게이트 미실행.**
+- 상태: **2026-09-13 A·B 구현 및 HWP/HWPX Studio 시각 판정 통과. C 통합 검증 진입 승인, 전체 게이트 미완료.**
 - 수행계획: [승인된 R1](task_m100_7084.md)
 - 원인 근거: [Stage 1](../working/task_m100_7084_stage1.md), 보존 commit `7e8b74cdd`.
 - 제품 조사 기준: `ad6174255e6aabfaa48131f3f5f2f6287a93e48a`.

@@ -2,7 +2,7 @@
 
 - 일자: 2026-09-13
 - 계획: [구현계획](../plans/task_m100_7084_impl.md)
-- 상태: **B 실제 Studio 연결·Docker WASM·Chrome 실측 완료. 작업지시자 시각 판정 대기. 전체 C 게이트 미실행.**
+- 상태: **B 실제 Studio 연결·Docker WASM·Chrome 실측 완료. 작업지시자 HWP/HWPX 시각 판정 통과. C 진입 승인.**
 - 선행: [A 결과](task_m100_7084_stage2.md), 인계 `b9b271238`.
 - 최초 준비부 제품/테스트 SHA: `eef7b3293f803ca3f8b702419c381f512e808b44`.
 - 공통 설정 후속 제품/테스트 SHA: `2364c51f37fefde1b04b68e7c2509e6828659393`.
@@ -312,9 +312,10 @@ workspace build/all-target Clippy·전체 회귀·Native Skia·Render Diff·Dock
 
 ### 7.4 인계 및 잔여 검증
 
-작업지시자에게 실제 Studio의 두 원본 **2쪽 `실물😀`** 시각 판정을 요청한다.
-확인 페이지: `http://localhost:7700` (기존 탭은 새로고침 필요).
-아직 메인테이너 시각 통과나 이슈 완료로 기록하지 않는다.
+2026-09-13 작업지시자가 실제 Studio의 HWP/HWPX 이모티콘 렌더링을 **성공**으로 판정했다.
+이 판정은 두 원본의 이모티콘 렌더링에 대한 것이며 페이지 전체의 한컴 동일성이나
+모든 backend·복합 문자 지원을 승인한 것으로 확대하지 않는다. 이어서 C 통합 검증 진입을 승인했다.
+제품/테스트 SHA는 `bdd63167ccad59d0560fd8a6a57e018057ba8c06`이며 이슈 완료는 아직 아니다.
 
 C에서는 전체 Rust/Studio 회귀·workspace/all-target lint·Native Skia·Render Diff·비용을 검증한다.
 정적/portable SVG·PDF 및 CanvasKit의 이모지 자체를 고친 것은 아니다.
