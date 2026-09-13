@@ -12,6 +12,10 @@ fn check(core: &DocumentCore, align: VerticalAlign, height: u32) {
     let cell = &controls["controls"][0]["cells"][0];
     let top = cell["y"].as_f64().unwrap();
     let bottom = top + f64::from(height) / 75.0;
+    assert!(
+        (cell["h"].as_f64().unwrap() - f64::from(height) / 75.0).abs() < 0.2,
+        "내용이 꽉 찬 셀의 높이를 줄이지 않는다"
+    );
     let text: Value = serde_json::from_str(&core.get_page_text_layout_native(0).unwrap()).unwrap();
     let runs: Vec<_> = text["runs"]
         .as_array()
@@ -38,6 +42,39 @@ fn check(core: &DocumentCore, align: VerticalAlign, height: u32) {
     assert!(
         (first - expected).abs() < 0.2,
         "{align:?}: first={first}, expected={expected}"
+    );
+}
+
+#[test]
+fn shrinking_table_uses_slack_without_clipping_two_lines() {
+    let source = DocumentCore::from_bytes(FIXTURE).unwrap();
+    let mut doc = source.document().clone();
+    let Control::Table(table) = &mut doc.sections[0].paragraphs[1].controls[0] else {
+        panic!("합성 표");
+    };
+    table.cells[0].vertical_align = VerticalAlign::Top;
+    let mut slack = table.cells[0].clone();
+    slack.row = 1;
+    slack.height = 4200;
+    let paragraph = &mut slack.paragraphs[0];
+    paragraph.text = "Slack".into();
+    paragraph.char_count = 6;
+    paragraph.char_offsets = (0..5).collect();
+    paragraph.line_segs.truncate(1);
+    paragraph.source_line_seg_vertical_pos = None;
+    table.cells.push(slack);
+    table.row_count = 2;
+    table.row_sizes = vec![1, 1];
+    table.common.height = 5600;
+    table.rebuild_grid();
+    let mut core = DocumentCore::new_empty();
+    core.set_document(doc);
+    check(&core, VerticalAlign::Top, 2280);
+    let controls: Value =
+        serde_json::from_str(&core.get_page_control_layout_native(0).unwrap()).unwrap();
+    assert!(
+        (controls["controls"][0]["h"].as_f64().unwrap() - 5600.0 / 75.0).abs() < 0.2,
+        "여유 행을 줄여 표의 지정 높이를 유지한다"
     );
 }
 
