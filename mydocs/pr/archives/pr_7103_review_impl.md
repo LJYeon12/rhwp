@@ -2,68 +2,60 @@
 kind: investigation
 status: active
 canonical: mydocs/manual/pr_review_workflow.md
-last_verified: 2026-09-13
+last_verified: 2026-09-14
 ---
 
-# PR #7103 메인터너 보정·체리픽 통합 계획
+# PR #7103 메인터너 보정·통합 기록
 
-[원 PR 검토](pr_7103_review.md)의 F1/F2를 제한된 조판 범위에서 보정하는 후속 경로다.
-작업지시자의 요청은 처리 가능 여부 확인이며, 이 문서는 보정 완료나 remote 변경 승인으로 세지 않는다.
+[원 PR review](pr_7103_review.md)의 F1/F2를 보정했다. 작업지시자는 원 PR 코멘트와 fork Write 권한
+요청, 체리픽 후 보정·검증·통합 PR 생성을 승인했다. source `1c5fd9676`은 이미 `d92086eec6`으로
+cherry-pick되어 있어 중복 적용하지 않았고, 같은 `review/pr7103-20260913` branch에서
+`6bb907fa947eafcf245057dc8ae594e8635fd2af` + `ef489fd0290b96706f8fda265ed2f19b3265601a`로 보정했다.
 
-## 확인 완료
+## 구현
 
-- source `1c5fd967674e238b3d4e42948c1abe5d4c279f6f`는 `d92086eec6`으로 이미 cherry-pick했다.
-  원 저자와 `-x` provenance를 유지했다. 중복 cherry-pick은 하지 않는다.
-- 현재 `review/pr7103-20260913`은 최신 `upstream/devel=cd2d9e8a4`를 포함한다.
-- 원본 저장소에 `jangster77`의 `push: true`가 있어 upstream 임시 branch의 통합 PR 경로를 쓸 수 있다.
-  devel 직접 push는 사용하지 않는다.
-- fork는 일반 `push: false`지만 PR의 `maintainer_can_modify: true`이며, 비LFS 빈 commit의
-  `GIT_LFS_SKIP_PUSH=1 git push --dry-run`은 통과했다. 초기 LFS lock 오류만으로 쓰기 불가라고
-  판단했던 기록을 정정했다. 실제 push는 없었다. 이 사실이 체리픽 통합 경로를 막지는 않는다.
+| 위치 | 변경과 이유 |
+| --- | --- |
+| `src/model/paragraph.rs` | `empty_control_stream_position`은 빈 text/char_offsets, 독립 field/title marker 없음, `char_count=controls×8+1` 계약에서 원시 UTF-16 위치를 계산한다. 편집 논리 위치 API의 의미는 유지한다. |
+| `src/renderer/layout.rs` | 공통 `control_line_seg_index`가 위 결과를 소비한다. 무조건 음수 clamp를 제거하고 signed 산술을 유지한다. 저장 plan의 y/advance_end를 사용해 여백·간격을 재가산하지 않는다. 수평 정렬은 기존 계산을 쓴다. |
+| `src/renderer/composer.rs` | `stored_tac_lines`가 각 표의 소유 줄·top·occupied_end·end를 계산한다. 중간 구조 제어의 줄 대신 실제 다음 표의 줄로 pen을 옮기고 마지막 줄의 signed spacing을 보존한다. |
+| `src/renderer/float_placement.rs` | `InlineBoxPlacement.advance_end`로 typeset이 확정한 흐름 끝을 layout에 전달한다. 기존 inline 배치는 None이다. |
+| `src/renderer/typeset.rs` | 검증된 저장 plan 전체가 현재 단에 들어오면 PageItem과 같은 placement를 함께 저장한다. 측정과 배치가 동일 end를 소비한다. |
+| `tests/cases/issue_7103_tac_table_rewind.rs` | 비겹침만 보는 검사에서 한컴 경계·페이지 수 및 양수/음수 저장 간격을 확인하는 4개 검사로 확장했다. |
 
-## 보정 범위
+## 적용 계약과 회귀 경계
 
-1. `Paragraph::control_text_positions`의 **편집 논리 위치**를 원시 UTF-16 위치로 오인하는
-   빈 carrier 소속 계산을 바로잡는다. 편집 API의 논리 위치 의미 자체를 전역 변경하지 않는다.
-   원시 control 위치/저장 LineSeg 대응을 공통 결과로 마련하고 HWPX axis shift·재조판 줄의 적용
-   범위를 구분한다. 이번 HWP의 24/40은 독립 원시 레코드에서 확인한 값이지 샘플 상수가 아니다.
-2. 연속 표 배치에서 `seg_idx + 1` 대신 실제 다음 표의 소유 줄과 그 줄의 점유·advance를 사용한다.
-   현재 `forward_line_seg_gap_hu`의 무조건 음수 clamp를 원인 해결로 유지하지 않는다.
-   표 테두리 높이와 바깥여백 포함 줄 높이, 기준선 및 마지막 표 이후 문단 advance를 함께 검토한다.
-3. 기존 소속 함수는 layout 외에 composer의 `owned_rowbreak_tac_height`, pagination의 routing,
-   table cell 배치에서도 사용한다. 이 호출자들이 같은 소속 결과를 소비하는지 확인한다.
-   `inline_flow::supports`는 현재 Header/Footer가 있는 본 입력을 지원하지 않으므로 조건만 넓혀
-   강제로 재조판시키는 대안으로 처리하지 않는다. 저장 줄 소속 교정과 재조판 경로를 구분한다.
-4. #7103 integration test의 “안 겹침 + 2px 이하”만으로 정답을 판정하지 않는다. 소유 줄 대응과
-   한컴 PDF의 실제 경계·후속 표 위치를 검증한다. glyph 형태 차이와 기하 잔여 차이는 별도로 다룬다.
+- 비편집 HWP5/HWPX 저장 레이아웃이며 side-wrap exclusion이 없어야 한다.
+- HWPX 구역 머리의 `hwpx_axis_shift`가 0이어야 한다. 재기준화 축은 기존 소속 경로를 쓴다.
+- 저장 문단 시작 앵커를 누적 높이의 하한으로 함께 반영한다. 앞 표 위로 되감기지 않는다.
+- 빈 control stream이 완전하고 저장 partition이 dirty/합성 LineSeg가 아니어야 한다.
+- 두 개 이상의 TAC 표와 SectionDef/ColumnDef/Header/Footer만 포함해야 한다.
+- 표마다 소유 줄 및 vertical_pos가 증가해야 한다. 같은 줄·쪽 좌표 reset은 기존 경로로 반환한다.
+- `line_height = 선언 표 높이 + 위/아래 바깥여백`이어야 하며 실측 표 높이도 선언값과 유지되어야 한다.
+- 모든 표의 점유 끝과 문단 뒤 간격이 현재 단에 들어와야 한다. 성장·분할·재조판은 기존 경로다.
+- signed 저장 간격을 허용하지만 line end가 자기 top보다 앞서는 파손 계약은 수용하지 않는다.
+- layout/composer/pagination/table-cell의 기존 공통 소속 조회 호출자는 같은 함수를 유지한다.
+  Header/Footer가 있는 입력을 `inline_flow::supports` 조건 완화로 강제 재조판하지 않았다.
 
-전체 엔진 재작성이나 원본 fixture의 좌표 변경은 현재 보정의 필수 조건이 아니다. 다만 위 내용은
-코드 경로에서 확인한 보정 범위이며, 아직 패치를 구현·실행해 성공을 입증한 상태는 아니다.
+## 실행 증거
 
-## 보정 후 검증과 기록
+보정 4개 회귀는 모두 통과했고, 원 clamp production 파일 5개로 되돌린 대조군에서 같은 4개가
+모두 assertion failure로 실패했다. 대조 직후 파일 해시를 복원했고 최종 code commit과 대조했다.
+양수/음수 간격 사례는 원본을 메모리에서 변경·직렬화해 public DocumentCore로 열었으며,
+실물 한컴 경계 사례의 원본 HWP/PDF는 변경하지 않았다.
 
-- 비가시 제어 사이 TAC, 정상 양수 간격, 합법적인 음수 줄간격, 같은 줄/다른 줄 표 및
-  저장 LineSeg/재조판 경로의 적용·비적용 계약을 실제 결과로 확인한다.
-- #7103/#6078/#6181 focused를 재실행하고, 공유 소속 함수의 영향에 따라 RowBreak·cell·pagination
-  회귀를 추가 선택한다. 기존 focused·OVR·source CI는 보정 전 증거로 유지한다.
-- 필수 Rust lint 묶음(native/WASM/workspace Clippy 포함), integration suite 및 해당 Native/WASM
-  검증을 local_validation 절차대로 보정된 head에서 완료한다.
-- 기존 커밋 입력과 기준 PDF를 재사용하여 OVR5 및 p.1 fidelity/Visual Sweep/3-way/OVL를 갱신한다.
-  이미 Git에 있는 HWP/HWPX/PDF를 이름 변경해 추가하지 않는다. 허용치·golden으로 차이를 가리지 않는다.
-- 보정 code/test를 별도 commit으로 보존하고 원 head/보정 SHA/통합 head/증거를 원 PR review에 기록한다.
-  모든 보류 사유 해소 후에만 판정을 `메인터너 보정 후 수용 가능`으로 변경한다.
+#6078/#6181/#7049/#6754/#6972로 HWP3/HWPX·같은 줄 그림/표·전면 개체 routing을 확인했다.
+필수 lint·전체 integration·Native Skia·fresh WASM 및 실제 브라우저 검증과 OVR5/한컴 1쪽 비교는
+[review 실행 표](pr_7103_review.md#4-최종-보정-head-검증)에 기록했다. 공유 target/기존 WASM package를
+재사용하지 않았고 기존 입력을 재명명한 중복 fixture도 추가하지 않았다.
 
-## 통합 PR 및 후속 처리 경로
+## 통합 및 후속 절차
 
-보정 검증 후 작업지시자가 승인한 원격 작업 범위에서 진행한다.
+[통합 PR #7110](https://github.com/edwardkim/rhwp/pull/7110)은 원본 저장소 임시
+head에서 devel을 대상으로 만들었다. owner에게 reviewer를 자동 요청하지 않았고, `Closes #7096`으로
+실제 결함과 연결했다. 원 PR #7103에는 통합 경로와 fork Write 권한 요청을 게시했다.
 
-1. 원본 저장소 임시 branch(예: `fix/7096-tac-line-ownership-20260913`)를 사용해 devel 대상
-   통합 PR을 만든다. owner를 자동 reviewer로 지정하지 않는다.
-2. 원 PR의 `closes #7103` 오류를 통합 PR에 복사하지 않는다. #7096의 실제 해결 범위에 맞게
-   closing 관계를 정하고 원 contributor PR/source SHA 및 메인터너 보정 내용을 구분한다.
-3. code candidate의 정확한 head CI를 확인한다. 검토·오늘할일·증적 최종 기록은 같은 통합 PR의
-   trailing commit 경로로 처리하며 별도 통합 번호용 review 문서를 새로 만들지 않는다.
-4. 최종 head CI와 mergeability 확인 후 승인 범위에 따라 통합 PR을 merge한다.
-   반영된 통합 PR/merge SHA를 원 #7103에 코멘트한 뒤 close하고 #7096 상태를 확인한다.
-5. post_merge 절차에 따라 devel 동기화·적용되는 duration refresh·소유 산출물 정리를 완료한다.
-   원 contributor fork branch는 삭제하지 않는다.
+code CI 성공 뒤 review·오늘할일·최종 증적을 같은 통합 PR의 trailing commit으로 추가했다.
+별도의 통합 번호 review 문서나 docs-only PR은 만들지 않았다. 작업지시자의 CI 모니터링 후 후속처리 승인을 받았으며, 최종 trailing head CI를
+확인한 뒤 병합한다. 병합 뒤 원 PR에 통합 PR/merge SHA와 3-way/OVL을 알리고 close하며, #7096 상태·devel
+동기화·duration refresh·이번 소유 산출물 정리를 확인한다. 원 contributor fork branch는 보존한다.
