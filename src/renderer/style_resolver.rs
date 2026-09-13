@@ -295,6 +295,9 @@ impl Default for ResolvedBorderStyle {
 /// 해소된 스타일 세트 (DocInfo에서 변환)
 #[derive(Debug, Default, Clone)]
 pub struct ResolvedStyleSet {
+    /// Shared session measurements for DB-missing glyphs, not document styles.
+    pub supplemental_metrics:
+        Option<std::sync::Arc<super::supplemental_metrics::SupplementalMetricSnapshot>>,
     /// 글자 스타일 목록 (char_shapes[id]에 대응)
     pub char_styles: Vec<ResolvedCharStyle>,
     /// 문단 스타일 목록 (para_shapes[id]에 대응)
@@ -356,6 +359,7 @@ pub fn resolve_styles_with_variant(
         hwp3_variant: is_hwp3_variant,
         kerning_measurement_context: None,
         horizontal_shaping_context: None,
+        supplemental_metrics: None,
     }
 }
 

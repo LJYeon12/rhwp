@@ -64,6 +64,7 @@ pub(crate) mod shaping_vertical;
 pub mod skia;
 pub(crate) mod static_svg;
 pub mod style_resolver;
+pub mod supplemental_metrics;
 pub mod svg;
 pub mod svg_fragment;
 pub mod svg_layer;
@@ -185,6 +186,10 @@ pub(crate) fn replay_positions_or_compute<'a>(
 /// 텍스트 렌더링 스타일
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TextStyle {
+    /// Session-only glyph metrics; never part of document/style serialization.
+    #[serde(skip)]
+    pub supplemental_metrics:
+        Option<std::sync::Arc<supplemental_metrics::SupplementalMetricSnapshot>>,
     /// 글꼴 이름
     pub font_family: String,
     /// 글꼴 크기 (px)
@@ -399,6 +404,7 @@ pub(crate) fn canvas_cluster_fit_scale(
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
+            supplemental_metrics: None,
             font_family: String::new(),
             font_size: 0.0,
             color: 0,
