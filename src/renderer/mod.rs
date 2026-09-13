@@ -1448,12 +1448,18 @@ pub(crate) fn cell_vpos_ladder_is_intact(
     paragraphs: &[crate::model::paragraph::Paragraph],
 ) -> bool {
     paragraphs.iter().enumerate().all(|(idx, para)| {
-        // 문단 내부의 뒤 줄도 vpos=0이면 절대 위치가 없는 줄이다.
-        // 배치는 줄을 쌓으므로 max(vpos + lh)를 높이로 쓰면 과소 계산한다.
-        // 어울림 개체 좌우의 가로 조각은 실제 같은 줄이므로 보존한다.
+        // 0 위치 자체는 유효하다. 텍스트가 전진하는 연속 줄의 위치가 모두 0이고
+        // 같은 줄의 가로 조각이나 page/column 전환이 아닐 때만 앵커 부재로 본다.
+        // 같은 text_start의 중복과 양수 위치에서 0으로 돌아오는 저장 리셋은 보존한다.
         first_seg_vpos_is_anchor(para, idx)
-            && para.line_segs.iter().enumerate().skip(1).all(|(i, seg)| {
-                seg.vertical_pos != 0 || height_measurer::stored_seg_is_row_fragment(para, i)
+            && !para.line_segs.windows(2).enumerate().any(|(i, pair)| {
+                let (prev, seg) = (&pair[0], &pair[1]);
+                prev.vertical_pos == 0
+                    && seg.vertical_pos == 0
+                    && seg.text_start > prev.text_start
+                    && !seg.is_first_line_of_page()
+                    && !seg.is_first_line_of_column()
+                    && !height_measurer::stored_seg_is_row_fragment(para, i + 1)
             })
     })
 }
