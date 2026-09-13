@@ -253,6 +253,8 @@ export class CanvasView {
     this.documentLoadPrepared = false;
     if (this.disposed) return;
     const selection = await this.rendererSession.resolve(this.wasm);
+    if (this.disposed || epoch !== this.rendererSelectionEpoch || !this.rendererSession.isCurrent(selection)) return;
+    await this.wasm.prepareCanvasMetrics(selection.backend, () => !this.disposed && epoch === this.rendererSelectionEpoch && this.rendererSession.isCurrent(selection));
     if (
       this.disposed
       || epoch !== this.rendererSelectionEpoch
@@ -440,8 +442,10 @@ export class CanvasView {
     this.rendererSelectionEpoch += 1;
     const selected = {
       selection: pinned,
-      backendChanged: this.applyRendererSelection(pinned),
+      backendChanged: (await this.wasm.prepareCanvasMetrics(pinned.backend, () => !this.disposed && this.rendererSession.isCurrent(pinned))) || this.zoomRefreshRequired,
     };
+    if (!this.rendererSession.isCurrent(pinned)) return null;
+    selected.backendChanged = this.applyRendererSelection(pinned) || selected.backendChanged;
     this.scheduleAutoRendererReselection();
     return selected;
   }
@@ -475,6 +479,8 @@ export class CanvasView {
     if (this.disposed || epoch !== this.rendererSelectionEpoch) return null;
 
     const selection = await this.rendererSession.resolve(this.wasm);
+    if (this.disposed || epoch !== this.rendererSelectionEpoch || !this.rendererSession.isCurrent(selection)) return null;
+    const metricsChanged = await this.wasm.prepareCanvasMetrics(selection.backend, () => !this.disposed && epoch === this.rendererSelectionEpoch && this.rendererSession.isCurrent(selection));
     if (
       this.disposed
       || epoch !== this.rendererSelectionEpoch
@@ -482,7 +488,7 @@ export class CanvasView {
     ) return null;
     return {
       selection,
-      backendChanged: this.applyRendererSelection(selection),
+      backendChanged: this.applyRendererSelection(selection) || metricsChanged,
     };
   }
 
@@ -1686,7 +1692,12 @@ export class CanvasView {
       : this.rendererSession.fallbackFromRuntimeFailure(error, expectedDecisionKey);
     if (!selection) return;
     this.rendererFallbackScheduled = true;
-    queueMicrotask(() => {
+    queueMicrotask(async () => {
+      if (this.disposed || !this.rendererSession.isCurrent(selection)) {
+        this.rendererFallbackScheduled = false;
+        return;
+      }
+      await this.wasm.prepareCanvasMetrics(selection.backend, () => !this.disposed && this.rendererSession.isCurrent(selection));
       this.rendererFallbackScheduled = false;
       if (this.disposed || !this.rendererSession.isCurrent(selection)) return;
       this.applyRendererSelection(selection);

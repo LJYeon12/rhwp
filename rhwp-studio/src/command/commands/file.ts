@@ -578,12 +578,15 @@ async function preparePrintPages(
   onProgress: (currentPage: number, pageCount: number) => void,
 ): Promise<PrintPage[]> {
   const wasm = services.wasm;
-  const pageCount = wasm.pageCount;
+  // Capture a portable pagination consistently; restore Canvas before yielding.
+  const pages = wasm.withPortableMetrics(() => Array.from({ length: wasm.pageCount }, (_, i) => ({
+    svg: wasm.renderPageSvgWithProfile(i, 'print'), info: wasm.getPageInfo(i),
+  })));
+  const pageCount = pages.length;
   const printPages: PrintPage[] = [];
   for (let i = 0; i < pageCount; i++) {
     onProgress(i + 1, pageCount);
-    const svg = wasm.renderPageSvgWithProfile(i, 'print');
-    const pageInfo = wasm.getPageInfo(i);
+    const { svg, info: pageInfo } = pages[i];
     printPages.push(createPrintPage(svg, pageInfo, i));
     if (i % 5 === 0) await new Promise(resolve => setTimeout(resolve, 0));
   }

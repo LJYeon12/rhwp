@@ -2138,6 +2138,16 @@ impl DocumentCore {
         options: crate::paint::LayerJsonOptions,
     ) -> Result<String, HwpError> {
         self.require_portable_metrics()?;
+        self.get_canvas_page_layer_tree_with_options_native(page_num, profile, options)
+    }
+
+    /// Geometry for the selected Canvas2D layout, not a portable export.
+    pub fn get_canvas_page_layer_tree_with_options_native(
+        &self,
+        page_num: u32,
+        profile: RenderProfile,
+        options: crate::paint::LayerJsonOptions,
+    ) -> Result<String, HwpError> {
         // [Task #2222] 직렬화 JSON 캐시 — 트리 캐시(#2227 with_page_tree_cached)가
         // 있어도 1MB 급 재직렬화가 renderPage 마다 렌더 비용과 맞먹게 반복된다
         // (주보 p2 실측: 15.2ms/회, JSON 1.05MB). 출력옵션 지문이 다르면 미스.
@@ -2149,7 +2159,7 @@ impl DocumentCore {
             }
         }
         let json = self
-            .build_page_layer_tree_with_profile(page_num, profile)?
+            .build_canvas_page_layer_tree_with_profile(page_num, profile)?
             .to_json_with_options(options);
         {
             // 토글(투명선/잘림보기 등) 왕복이 매번 미스가 되지 않도록 페이지당

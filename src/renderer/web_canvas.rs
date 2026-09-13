@@ -380,6 +380,7 @@ pub struct WebCanvasRenderer {
     soft_wrap_decoration_trim: Option<(u32, usize)>,
     active_decoration_trim: usize,
     suppress_text_glyphs: bool,
+    metric_descriptor_mismatch: std::cell::Cell<bool>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -407,6 +408,7 @@ impl WebCanvasRenderer {
             soft_wrap_decoration_trim: None,
             active_decoration_trim: 0,
             suppress_text_glyphs: false,
+            metric_descriptor_mismatch: std::cell::Cell::new(false),
         })
     }
 
@@ -2174,10 +2176,16 @@ impl WebCanvasRenderer {
 #[cfg(target_arch = "wasm32")]
 impl LayerRenderer for WebCanvasRenderer {
     fn render_page(&mut self, tree: &PageLayerTree) -> LayerRenderResult<()> {
+        self.metric_descriptor_mismatch.set(false);
         validate_text_variant_scope(tree).map_err(|error| {
             HwpError::RenderError(format!("invalid PageLayerTree text contract: {error}"))
         })?;
         self.render_layer_tree(tree);
+        if self.metric_descriptor_mismatch.get() {
+            return Err(HwpError::RenderError(
+                "Canvas metric descriptor changed; prepare font metrics again".into(),
+            ));
+        }
         Ok(())
     }
 }
@@ -2319,6 +2327,11 @@ impl Renderer for WebCanvasRenderer {
                     } else {
                         self.ctx.set_font(font);
                     }
+                    let measured_descriptor =
+                        super::supplemental_metrics::canvas_measured_descriptor(style, cluster_str);
+                    if measured_descriptor.is_some_and(|descriptor| descriptor != self.ctx.font()) {
+                        self.metric_descriptor_mismatch.set(true);
+                    }
                     // XML/HTML 무효 제어문자 건너뜀 (SVG의 escape_xml과 동일)
                     if cluster_str
                         .starts_with(|c: char| c < '\u{0020}' && !matches!(c, '\t' | '\n' | '\r'))
@@ -2385,7 +2398,11 @@ impl Renderer for WebCanvasRenderer {
                         };
                         let pin_ascii_advance =
                             cluster_str.chars().any(|ch| ch.is_ascii_alphanumeric());
-                        let fit_scale = if cluster_advance > 0.0 {
+                        // Measured fallback advance already includes script size and
+                        // document ratio exactly once. Do not fit it a second time.
+                        let fit_scale = if measured_descriptor.is_some() {
+                            None
+                        } else if cluster_advance > 0.0 {
                             self.ctx
                                 .measure_text(cluster_str)
                                 .ok()
@@ -2939,6 +2956,11 @@ impl WebCanvasRenderer {
                     ctx.set_font(old_hangul_font);
                 } else {
                     ctx.set_font(font);
+                }
+                if super::supplemental_metrics::canvas_measured_descriptor(style, cs)
+                    .is_some_and(|descriptor| descriptor != ctx.font())
+                {
+                    self.metric_descriptor_mismatch.set(true);
                 }
                 if cs.starts_with(|c: char| c < '\u{0020}' && !matches!(c, '\t' | '\n' | '\r')) {
                     continue;

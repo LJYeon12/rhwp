@@ -260,6 +260,13 @@ impl SupplementalMetric {
             self.character,
         )
     }
+
+    pub(crate) fn request_key(&self) -> String {
+        Sha256::digest(format!("{:?}", (&self.family, self.key())))
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
 }
 
 #[derive(Debug)]
@@ -415,6 +422,17 @@ impl SupplementalMetricStore {
 impl Drop for SupplementalMetricStore {
     fn drop(&mut self) {
         self.invalidate();
+    }
+}
+
+/// Exact descriptor prepared by Canvas, never an inferred fallback face name.
+pub fn canvas_measured_descriptor<'a>(style: &'a TextStyle, cluster: &str) -> Option<&'a str> {
+    let ch = single_scalar_cluster(cluster).ok()?;
+    let snapshot = style.supplemental_metrics.as_ref()?;
+    let entry = snapshot.lookup(snapshot.context(), style, ch)?;
+    match entry.evidence() {
+        MetricEvidence::BackendMeasured { descriptor } => Some(descriptor),
+        _ => None,
     }
 }
 

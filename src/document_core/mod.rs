@@ -7,7 +7,9 @@ pub(crate) mod helpers;
 pub(crate) use helpers::*;
 
 pub mod builders;
+mod canvas_metric_requests;
 mod canvas_metrics;
+pub use canvas_metric_requests::{CanvasMetricBatch, CanvasMetricReply, CanvasMetricRequest};
 mod commands;
 pub use commands::paragraph_block::{
     FillTemplateRequest, FillTemplateResult, ImportParagraphBlockLimits,

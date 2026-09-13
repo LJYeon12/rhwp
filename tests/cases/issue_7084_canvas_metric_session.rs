@@ -1,4 +1,5 @@
 //! Canvas measurement lifetime and output isolation, using the original #7084 fixtures.
+use rhwp::document_core::{CanvasMetricBatch, CanvasMetricReply};
 use rhwp::paint::layer_tree::{LayerNode, LayerNodeKind};
 use rhwp::paint::paint_op::PaintOp;
 use rhwp::paint::profile::RenderProfile;
@@ -9,6 +10,105 @@ use rhwp::renderer::supplemental_metrics::{
     MetricBackend, MetricContext, MetricError, SupplementalMetric,
 };
 use rhwp::DocumentCore;
+
+fn replies(batch: &CanvasMetricBatch) -> Vec<CanvasMetricReply> {
+    batch
+        .requests
+        .iter()
+        .map(|r| CanvasMetricReply {
+            key: r.key.clone(),
+            cluster: r.cluster.clone(),
+            font: r.font.clone(),
+            resolved_font: r.font.clone(),
+            measured_advance_px: 18.302703857,
+        })
+        .collect()
+}
+
+#[test]
+fn collected_original_requests_register_and_preserve_ir_and_portable_svg() {
+    for ext in ["hwp", "hwpx"] {
+        let mut core = core(ext);
+        let original = format!("{:?}", core.document());
+        let baseline = run(&core);
+        let svg = core.render_page_svg_native(0).unwrap();
+        let batch = core.collect_canvas_metric_requests(context()).unwrap();
+        assert!(batch.requests.iter().any(|r| r.cluster == "😀"), "{ext}");
+        assert!(
+            batch
+                .requests
+                .iter()
+                .all(|r| r.cluster.chars().count() == 1
+                    && !r.cluster.chars().any(char::is_whitespace))
+        );
+        assert!(core
+            .register_canvas_metric_replies(context(), batch.revision, replies(&batch))
+            .unwrap());
+        core.select_canvas_metrics(true).unwrap();
+        assert_ne!(positions(&run(&core)), positions(&baseline));
+        let warm = core.collect_canvas_metric_requests(context()).unwrap();
+        assert!(!core
+            .register_canvas_metric_replies(context(), warm.revision, replies(&warm))
+            .unwrap());
+        core.select_canvas_metrics(false).unwrap();
+        assert_eq!(core.render_page_svg_native(0).unwrap(), svg);
+        assert_eq!(format!("{:?}", core.document()), original);
+    }
+}
+
+#[test]
+fn request_envelope_rejects_partial_duplicate_and_descriptor_mismatch_atomically() {
+    let mut core = core("hwp");
+    let baseline = run(&core);
+    let batch = core.collect_canvas_metric_requests(context()).unwrap();
+    let mut partial = replies(&batch);
+    partial.pop().unwrap();
+    assert_eq!(
+        core.register_canvas_metric_replies(context(), batch.revision, partial),
+        Err(MetricError::ContextMismatch)
+    );
+    let mut invalid = replies(&batch);
+    invalid[0].font = "99px serif".into();
+    assert_eq!(
+        core.register_canvas_metric_replies(context(), batch.revision, invalid),
+        Err(MetricError::InvalidDescriptor)
+    );
+    if batch.requests.len() > 1 {
+        let mut duplicate = replies(&batch);
+        duplicate[1].key = duplicate[0].key.clone();
+        assert_eq!(
+            core.register_canvas_metric_replies(context(), batch.revision, duplicate),
+            Err(MetricError::DuplicateKey)
+        );
+    }
+    assert!(!core.canvas_metrics_active());
+    assert_eq!(positions(&run(&core)), positions(&baseline));
+    assert!(core
+        .register_canvas_metric_replies(context(), batch.revision, replies(&batch))
+        .unwrap());
+}
+
+#[test]
+fn requests_are_bound_to_latest_ticket_and_source_revision() {
+    let mut core = core("hwp");
+    let old = core.collect_canvas_metric_requests(context()).unwrap();
+    let current = core.collect_canvas_metric_requests(context()).unwrap();
+    assert_ne!(old.revision, current.revision);
+    assert_eq!(
+        core.register_canvas_metric_replies(context(), old.revision, replies(&old)),
+        Err(MetricError::ContextMismatch)
+    );
+    core.apply_char_format_in_cell_native(0, 12, 1, 5, 0, 0, 3, r##"{"textColor":"#ff0000"}"##)
+        .unwrap();
+    assert_eq!(
+        core.register_canvas_metric_replies(context(), current.revision, replies(&current)),
+        Err(MetricError::ContextMismatch)
+    );
+    let fresh = core.collect_canvas_metric_requests(context()).unwrap();
+    assert!(core
+        .register_canvas_metric_replies(context(), fresh.revision, replies(&fresh))
+        .unwrap());
+}
 
 fn context() -> MetricContext {
     MetricContext {

@@ -14,6 +14,8 @@ pub(crate) struct CanvasMetricSession {
     context: MetricContext,
     store: SupplementalMetricStore,
     enabled: bool,
+    pub(super) pending: Option<super::canvas_metric_requests::PendingCanvasRequests>,
+    pub(super) next_request: u64,
 }
 
 impl CanvasMetricSession {
@@ -47,6 +49,8 @@ impl DocumentCore {
             context,
             store: SupplementalMetricStore::new(context),
             enabled: false,
+            pending: None,
+            next_request: 0,
         }); // dropping the old owner invalidates retained TextStyles too
         self.styles.supplemental_metrics = None;
         if was_active {
