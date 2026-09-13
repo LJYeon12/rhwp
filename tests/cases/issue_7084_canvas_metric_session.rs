@@ -3,6 +3,7 @@ use rhwp::paint::layer_tree::{LayerNode, LayerNodeKind};
 use rhwp::paint::paint_op::PaintOp;
 use rhwp::paint::profile::RenderProfile;
 use rhwp::renderer::canvas_text_font::CanvasTextFont;
+use rhwp::renderer::layout::{EmbeddedTextMeasurer, TextMeasurer};
 use rhwp::renderer::render_tree::TextRunNode;
 use rhwp::renderer::supplemental_metrics::{
     MetricBackend, MetricContext, MetricError, SupplementalMetric,
@@ -60,6 +61,14 @@ fn entries(run: &TextRunNode) -> Vec<SupplementalMetric> {
     .unwrap()]
 }
 
+fn positions(run: &TextRunNode) -> Vec<f64> {
+    // K0 runs intentionally omit layout_positions. Their painter computes the
+    // replay positions from the tree's resolved style, not a stored position array.
+    run.layout_positions
+        .clone()
+        .unwrap_or_else(|| EmbeddedTextMeasurer.compute_char_positions(&run.text, &run.style))
+}
+
 #[test]
 fn canvas_session_switch_rebuilds_positions_and_protects_portable_output() {
     for ext in ["hwp", "hwpx"] {
@@ -76,7 +85,8 @@ fn canvas_session_switch_rebuilds_positions_and_protects_portable_output() {
         let active = run(&core);
         assert!(active.style.supplemental_metrics.is_some());
         assert_ne!(
-            active.layout_positions, baseline.layout_positions,
+            positions(&active),
+            positions(&baseline),
             "cached positions must be rebuilt: {ext}"
         );
         assert!(core.render_page_svg_native(0).is_err());
@@ -89,7 +99,7 @@ fn canvas_session_switch_rebuilds_positions_and_protects_portable_output() {
             .unwrap());
         assert!(!core.select_canvas_metrics(true).unwrap());
         assert!(core.select_canvas_metrics(false).unwrap());
-        assert_eq!(run(&core).layout_positions, baseline.layout_positions);
+        assert_eq!(positions(&run(&core)), positions(&baseline));
         assert_eq!(core.render_page_svg_native(0).unwrap(), svg);
         assert_eq!(
             format!("{:?}", core.document()),
@@ -118,8 +128,7 @@ fn new_generation_invalidates_retained_styles_and_rejects_late_results() {
         core.register_canvas_metrics(context(), entries(&baseline)),
         Err(MetricError::ContextMismatch)
     );
-    assert_eq!(run(&core).layout_positions, baseline.layout_positions);
-    use rhwp::renderer::layout::{EmbeddedTextMeasurer, TextMeasurer};
+    assert_eq!(positions(&run(&core)), positions(&baseline));
     assert_eq!(
         EmbeddedTextMeasurer.compute_char_positions("😀", &retained.style),
         EmbeddedTextMeasurer.compute_char_positions("😀", &baseline.style)
@@ -155,7 +164,7 @@ fn document_replacement_drops_owner_and_batch_rejects_metric_mutation() {
         core.select_canvas_metrics(true),
         Err(MetricError::ContextMismatch)
     );
-    assert_eq!(run(&core).layout_positions, baseline.layout_positions);
+    assert_eq!(positions(&run(&core)), positions(&baseline));
 }
 
 #[test]
@@ -174,7 +183,7 @@ fn cell_format_batch_keeps_metric_binding_when_style_ids_change() {
     let after = run(&core);
     assert_ne!(after.char_shape_id, before.char_shape_id);
     assert!(after.style.supplemental_metrics.is_some());
-    assert_eq!(after.layout_positions, before.layout_positions);
+    assert_eq!(positions(&after), positions(&before));
     core.select_canvas_metrics(false).unwrap();
-    assert_ne!(run(&core).layout_positions, after.layout_positions);
+    assert_ne!(positions(&run(&core)), positions(&after));
 }
