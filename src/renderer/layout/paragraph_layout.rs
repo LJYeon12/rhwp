@@ -2266,6 +2266,35 @@ impl LayoutEngine {
         plan: &crate::renderer::inline_flow::InlineFlowPlan,
     ) {
         use crate::renderer::inline_flow::InlineFlowContent;
+        if let Some(rows) = &plan.text_rows {
+            let mut projected = para.clone();
+            projected.line_segs = rows.clone();
+            projected.hwpx_axis_shift = 0;
+            let composed =
+                crate::renderer::composer::compose_paragraph_in_context(&projected, styles);
+            self.layout_composed_paragraph_in_frame(
+                tree,
+                col_node,
+                &composed,
+                styles,
+                col_area,
+                col_area.y + plan.start,
+                0,
+                composed.lines.len(),
+                section_index,
+                para_index,
+                None,
+                true,
+                false,
+                0.0,
+                None,
+                Some(&projected),
+                Some(bin_data_content),
+                None,
+                true,
+            );
+            return;
+        }
         let chars: Vec<_> = para.text.chars().collect();
         for item in &plan.boxes {
             let x = col_area.x + item.x;
@@ -3944,6 +3973,51 @@ impl LayoutEngine {
         bin_data_content: Option<&[BinDataContent]>,
         wrap_anchor: Option<&crate::renderer::pagination::WrapAnchorRef>,
     ) -> f64 {
+        self.layout_composed_paragraph_in_frame(
+            tree,
+            col_node,
+            composed,
+            styles,
+            col_area,
+            y_start,
+            start_line,
+            end_line,
+            section_index,
+            para_index,
+            cell_ctx,
+            suppress_column_top_vpos_fallback,
+            is_last_cell_para,
+            first_line_x_offset,
+            multi_col_width_hu,
+            para,
+            bin_data_content,
+            wrap_anchor,
+            false,
+        )
+    }
+
+    pub(crate) fn layout_composed_paragraph_in_frame(
+        &self,
+        tree: &mut PageLayoutContext,
+        col_node: &mut RenderNode,
+        composed: &ComposedParagraph,
+        styles: &ResolvedStyleSet,
+        col_area: &LayoutRect,
+        y_start: f64,
+        start_line: usize,
+        end_line: usize,
+        section_index: usize,
+        para_index: usize,
+        cell_ctx: Option<CellContext>,
+        suppress_column_top_vpos_fallback: bool,
+        is_last_cell_para: bool,
+        first_line_x_offset: f64,
+        multi_col_width_hu: Option<i32>,
+        para: Option<&Paragraph>,
+        bin_data_content: Option<&[BinDataContent]>,
+        wrap_anchor: Option<&crate::renderer::pagination::WrapAnchorRef>,
+        physical_frame_rows: bool,
+    ) -> f64 {
         let mut y = y_start;
         let end = end_line.min(composed.lines.len());
         // [#4968 R4D-1] 한 문단의 모든 최종 emitted run이 같은 registry
@@ -4458,6 +4532,11 @@ impl LayoutEngine {
                 y = base_y + hwpunit_to_px(seg.vertical_pos - base_vpos, self.dpi);
             }
 
+            if physical_frame_rows {
+                if let Some(row) = para.and_then(|p| p.line_segs.get(line_idx)) {
+                    y = y_start + spacing_before + hwpunit_to_px(row.vertical_pos, self.dpi);
+                }
+            }
             // 다단 필터링: segment_width가 현재 단 너비와 불일치하면 건너뜀
             if let Some(col_w) = multi_col_width_hu {
                 if comp_line.segment_width > 0 && (comp_line.segment_width - col_w).abs() > 200 {
@@ -4863,14 +4942,15 @@ impl LayoutEngine {
                             })
                         })
                 };
-            let uses_stored_segment_geometry = (has_picture_shape_square_wrap
-                || line_has_inline_tac_table
-                || precomputed_body_wrap_line
-                || empty_stored_wrap_line
-                || body_square_wrap_stored_line
-                || cell_square_wrap_stored_line)
-                && comp_line.segment_width > 0
-                && (line_avail_hu < col_area_w_hu - 200 || cs_significant);
+            let uses_stored_segment_geometry = physical_frame_rows
+                || (has_picture_shape_square_wrap
+                    || line_has_inline_tac_table
+                    || precomputed_body_wrap_line
+                    || empty_stored_wrap_line
+                    || body_square_wrap_stored_line
+                    || cell_square_wrap_stored_line)
+                    && comp_line.segment_width > 0
+                    && (line_avail_hu < col_area_w_hu - 200 || cs_significant);
             let (effective_col_x, effective_col_w) = if uses_stored_segment_geometry {
                 let cs_px = hwpunit_to_px(comp_line.column_start, self.dpi);
                 let sw_px = hwpunit_to_px(comp_line.segment_width, self.dpi);
@@ -4919,23 +4999,23 @@ impl LayoutEngine {
             let stored_segment_line_box_cannot_hold_margins = uses_stored_segment_geometry
                 && !hwp3_password_stored_segment_line_box
                 && styled_margin_left + margin_right >= effective_col_w;
-            let (effective_margin_left, effective_margin_right) =
-                if hwp3_password_stored_segment_line_box
-                    || stored_segment_line_box_cannot_hold_margins
-                {
-                    (0.0, 0.0)
-                } else {
-                    (
-                        authoritative_stored_line_start_px(
-                            styled_margin_left,
-                            para.and_then(|p| p.line_segs.get(line_idx)),
-                            col_area_w_hu,
-                            self.dpi,
-                            hwp5_stored_line_start_eligible,
-                        ),
-                        margin_right,
-                    )
-                };
+            let (effective_margin_left, effective_margin_right) = if physical_frame_rows
+                || hwp3_password_stored_segment_line_box
+                || stored_segment_line_box_cannot_hold_margins
+            {
+                (0.0, 0.0)
+            } else {
+                (
+                    authoritative_stored_line_start_px(
+                        styled_margin_left,
+                        para.and_then(|p| p.line_segs.get(line_idx)),
+                        col_area_w_hu,
+                        self.dpi,
+                        hwp5_stored_line_start_eligible,
+                    ),
+                    margin_right,
+                )
+            };
 
             // [#5598] 내어쓰기가 줄 상자를 한 글자도 못 담을 만큼 먹으면 적용하지 않는다.
             //

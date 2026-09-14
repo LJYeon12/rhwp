@@ -1157,7 +1157,7 @@ struct TypesetState {
     pending_body_wide_top_reserve: f64,
     /// visible text host 의 양수 offset 자리차지 표가 후속 문단을 밀어내는 구간.
     visible_float_exclusions: Vec<VisibleFloatExclusion>,
-    /// 현재 단에 실제 배치된 그림의 점유 영역. 단/쪽 전환에서 폐기한다.
+    /// 현재 쪽에 실제 배치된 그림의 점유 영역(용지 좌표). 다음 단에도 간섭할 수 있다.
     side_wrap_exclusions:
         std::collections::BTreeMap<(usize, usize), super::layout_frame::FrameExclusion>,
     inline_placements:
@@ -5316,7 +5316,6 @@ impl TypesetState {
     fn flush_column(&mut self) {
         // [#4090] 쪽이 끝나면 어울림 밴드도 끝난다 — 개체 높이를 used 에 반영한다.
         self.close_square_band();
-        self.side_wrap_exclusions.clear();
         self.inline_box_flow_bottom = 0.0;
         if self.current_items.is_empty()
             && self.current_column_wrap_around_paras.is_empty()
@@ -5410,7 +5409,6 @@ impl TypesetState {
 
     /// 비어있어도 flush
     fn flush_column_always(&mut self) {
-        self.side_wrap_exclusions.clear();
         self.inline_box_flow_bottom = 0.0;
         let col_content = ColumnContent {
             column_index: self.current_column,
@@ -5585,6 +5583,7 @@ impl TypesetState {
     }
 
     fn reset_for_new_page(&mut self) {
+        self.side_wrap_exclusions.clear();
         self.current_column = 0;
         self.current_height = 0.0;
         self.current_start_height = 0.0;
@@ -8823,6 +8822,7 @@ impl TypesetEngine {
 
             let issue2424_branch_started = issue2424_ts_enabled.then(std::time::Instant::now);
             let mut native_hwp5_footnote_break = None;
+            let picture_host_origin = (st.pages.len(), st.current_column, st.current_height);
             if !has_table {
                 // --- 핵심: format → fits → place/split ---
                 let col_w = st
@@ -9359,7 +9359,15 @@ impl TypesetEngine {
                                 }
                             }
                             // [Task #1052] 글상자 내 각주 수집 (engine.rs:1376-1398 동등)
-                            st.register_side_wrap_picture(para_idx, ctrl_idx, para, None, styles);
+                            // NO_LS 호스트의 측정 원점만 전달한다. 저장 vpos 소유자는
+                            // 기존 저장 배치 경로에 남긴다.
+                            let host_top = (para.line_segs.is_empty()
+                                && (st.pages.len(), st.current_column)
+                                    == (picture_host_origin.0, picture_host_origin.1))
+                                .then_some(picture_host_origin.2);
+                            st.register_side_wrap_picture(
+                                para_idx, ctrl_idx, para, host_top, styles,
+                            );
                             if self.profile.get().hwp5_stored_pagination_layout()
                                 && !self.profile.get().session_edited()
                                 && st.current_items.iter().any(|item| {
