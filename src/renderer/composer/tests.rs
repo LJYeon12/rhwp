@@ -2283,3 +2283,31 @@ fn owned_rowbreak_tac_height_selects_current_or_multirow_frames() {
     let undersized = para_with_rows(4, 32_338);
     assert_eq!(owned_rowbreak_tac_height(&undersized, 0), None);
 }
+
+#[test]
+fn regenerated_half_space_caps_wide_spaces_without_expanding_narrow_fonts() {
+    // 한컴 PDF: 76076 p81의 한양신명조는 411/1024em, 한양중고딕의
+    // literal 들여쓰기 칸은 0.5em이다. 글꼴별 공백 차이를 지우지 않는다.
+    for (family, expected_em) in [("한양신명조", 411.0 / 1024.0), ("한양중고딕", 0.5)] {
+        for tracking in [0.0, -1.12] {
+            let style = TextStyle {
+                font_family: family.to_string(),
+                font_size: 56.0 / 3.0,
+                letter_spacing: tracking,
+                ..Default::default()
+            };
+            // 글꼴 metric은 기존 HWPUNIT 정수 절삭 뒤에 자간을 적용한다.
+            let base = if family == "한양신명조" {
+                (style.font_size * expected_em * 75.0).floor() / 75.0
+            } else {
+                style.font_size * expected_em
+            };
+            let expected = base * (1.0 + tracking / style.font_size);
+            assert!(
+                (regenerated_half_space_width(&style) - expected).abs() < 0.01,
+                "{family}, tracking={tracking}: got {} expected {expected}",
+                regenerated_half_space_width(&style)
+            );
+        }
+    }
+}

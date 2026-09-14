@@ -119,3 +119,38 @@ fn area_dot_without_a_metric_is_also_full_width() {
         "메트릭 없는 글꼴의 `ㆍ` 도 전각이어야 한다: {narrow:?}"
     );
 }
+
+/// 전각 ㆍ와 NO_LS 공백 보정을 함께 검증한다. 독립 기준인 한컴 2022 PDF
+/// p108은 오른쪽 셀의 9호와 마지막 3호를 각각 한 줄로 같은 쪽에 둔다.
+#[test]
+fn issue_7080_fullwidth_area_dot_keeps_no_ls_statute_rows_on_hancom_page_108() {
+    use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
+    fn lines(node: &RenderNode, out: &mut Vec<String>) {
+        if matches!(node.node_type, RenderNodeType::TextLine(_)) {
+            out.push(
+                node.children
+                    .iter()
+                    .filter_map(|n| match &n.node_type {
+                        RenderNodeType::TextRun(run) => Some(run.text.as_str()),
+                        _ => None,
+                    })
+                    .collect(),
+            );
+        }
+        for child in &node.children {
+            lines(child, out);
+        }
+    }
+    let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLE_80168)).unwrap();
+    let core = DocumentCore::from_bytes(&bytes).unwrap();
+    let tree = core.build_page_render_tree(107).unwrap();
+    let mut text = Vec::new();
+    lines(&tree.root, &mut text);
+    for item in ["9.", "3."] {
+        let expected = format!("{item} 그 밖에 시ㆍ도조례로 정하는 사항");
+        assert!(
+            text.iter().any(|line| line.trim() == expected),
+            "Hancom p108 keeps {expected:?} on a single physical line"
+        );
+    }
+}
