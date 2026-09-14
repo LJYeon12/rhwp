@@ -154,3 +154,46 @@ fn issue_7080_fullwidth_area_dot_keeps_no_ls_statute_rows_on_hancom_page_108() {
         );
     }
 }
+
+/// 한컴 p49의 다줄 대조군: 한 줄 문단의 고유 공백을 전역 전파하면
+/// 첫 줄에 `용`까지 당겨지고, 마지막 `인` 행이 없어져 다음 항이 올라간다.
+#[test]
+fn issue_7080_multiline_statute_keeps_hancom_page_49_three_rows() {
+    use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
+    fn visit(node: &RenderNode, out: &mut Vec<String>) {
+        if let RenderNodeType::TextLine(line) = &node.node_type {
+            if line.para_index == Some(2)
+                && node.bbox.x > 390.0
+                && node.bbox.y > 500.0
+                && node.bbox.y < 610.0
+            {
+                out.push(
+                    node.children
+                        .iter()
+                        .filter_map(|c| match &c.node_type {
+                            RenderNodeType::TextRun(run) => Some(run.text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<String>()
+                        .split_whitespace()
+                        .collect(),
+                );
+            }
+        }
+        for child in &node.children {
+            visit(child, out);
+        }
+    }
+    let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLE_80168)).unwrap();
+    let core = DocumentCore::from_bytes(&bytes).unwrap();
+    let mut lines = Vec::new();
+    visit(&core.build_page_render_tree(48).unwrap().root, &mut lines);
+    assert_eq!(
+        lines,
+        [
+            "1.자산관리회사와자산의투자ㆍ운",
+            "용에관한위탁계약을체결한법",
+            "인"
+        ]
+    );
+}

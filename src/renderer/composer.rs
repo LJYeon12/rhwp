@@ -1804,7 +1804,7 @@ fn estimate_regenerated_line_text_width(
 ///
 /// 한컴 PDF의 #3128 문단은 글꼴 고유 U+0020 폭이 반각보다 넓어도
 /// (한양중고딕 550/1024em) 선행 들여쓰기와 재조판된 내부 공백을 모두
-/// 최대 0.5em 칸으로 측정한다. 더 좁은 고유 공백은 유지한다. 둘 이상의 literal 선행 공백과 동일
+/// 0.5em 칸으로 측정한다. 이 함수는 둘 이상의 literal 선행 공백과 동일
 /// 글꼴 metric/구간별 자간을 확인한 좁은 fallback 경로에서만 사용한다.
 fn regenerated_half_space_width(style: &TextStyle) -> f64 {
     let font_size = style.font_size.max(0.0);
@@ -1819,10 +1819,7 @@ fn regenerated_half_space_width(style: &TextStyle) -> f64 {
     if style.letter_spacing + style.extra_char_spacing < 0.0 {
         width = width.max(base * 0.5);
     }
-    // 반각은 넓은 공백의 상한이지, 글꼴 고유의 좁은 공백을 늘리는 하한이 아니다.
-    // 한양신명조 14pt는 한컴 PDF에서 약 0.4em이다. 이를 0.5em으로 늘리면
-    // 올바른 전각 ㆍ와 함께 들어가는 조문 끝 글자가 다음 줄로 밀린다.
-    width.min(estimate_text_width_unrounded(" ", style))
+    width
 }
 
 /// [#2146] 저장 LINE_SEG 이 전혀 없고(NO_LS) 모든 문단이 1줄이며 각 줄이 셀

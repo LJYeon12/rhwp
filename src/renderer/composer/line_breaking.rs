@@ -291,8 +291,7 @@ pub(crate) enum SpaceMetric {
     /// [#3128] 들여쓴 셀 문단의 반각 칸.
     ///
     /// 한컴은 이 계급에서 글꼴 고유 U+0020 폭이 반각보다 넓어도 선행 들여쓰기와
-    /// 재조판된 내부 공백을 **최대 0.5em 칸**으로 잰다. 더 좁은 고유 공백은 유지한다.
-    /// 그 상한이 없으면 프레임이 셀
+    /// 재조판된 내부 공백을 **0.5em 칸**으로 잰다. 그 규칙이 없으면 프레임이 셀
     /// 안에서 한컴보다 넓게 재고, 줄이 밀려 셀이 쪽 밖으로 자란다.
     HalfCell,
 }
@@ -2631,7 +2630,28 @@ pub(crate) fn layout_paragraph_in_frame(
     styles: &ResolvedStyleSet,
     dpi: f64,
 ) -> Option<Vec<LineSeg>> {
-    layout_paragraph_in_frame_impl(para, frame, styles, dpi, true)
+    // 마지막 한 줄은 양쪽정렬 공백 분배 대상이 아니다. 글꼴 고유 공백으로
+    // 문단 전체가 한 행에 들어가면 그 확정 frame을 그대로 사용한다 (#7115).
+    // 들여쓴 다줄 셀의 반각 채움은 유지한다: 고유 공백을 전역 적용하면
+    // 80168 p49의 3행을 2행으로 과소 측정한다. p108의 9호/3호는 한 행이다.
+    if super::missing_lineseg_indented_cell_has_uniform_metrics_with_tracking(para, styles)
+        && styles
+            .para_styles
+            .get(para.para_shape_id as usize)
+            .is_some_and(|style| style.alignment == crate::model::style::Alignment::Justify)
+        && !para.text.contains(['\n', '\r', '\t'])
+    {
+        let mut candidate = frame.clone();
+        if let Some(rows) =
+            layout_paragraph_in_frame_impl(para, &mut candidate, styles, dpi, true, true)
+        {
+            if rows.len() == 1 {
+                *frame = candidate;
+                return Some(rows);
+            }
+        }
+    }
+    layout_paragraph_in_frame_impl(para, frame, styles, dpi, true, false)
 }
 
 fn layout_paragraph_in_frame_impl(
@@ -2640,6 +2660,7 @@ fn layout_paragraph_in_frame_impl(
     styles: &ResolvedStyleSet,
     dpi: f64,
     allow_kerning: bool,
+    font_space_candidate: bool,
 ) -> Option<Vec<LineSeg>> {
     // [#6102] 폭-중립 자리차지 표 host 도 fill 대상 — 표는 줄 폭을 소비하지
     // 않으므로(자기 레이아웃 소유자가 따로 배치) 텍스트만 재래핑하면 된다.
@@ -2672,12 +2693,13 @@ fn layout_paragraph_in_frame_impl(
     // 두어, 저장 `LINE_SEG` 가 없는 들여쓴 셀 문단도 글꼴 고유 공백 폭으로 쟀다.
     // 실측: `76076_regulatory_analysis.hwp` 에서 이 술어를 만족하는 문단이 74 개고,
     // 그 전부가 이 경로로 들어온다.
-    let space_metric =
-        if super::missing_lineseg_indented_cell_has_uniform_metrics_with_tracking(para, styles) {
-            SpaceMetric::HalfCell
-        } else {
-            SpaceMetric::Stored
-        };
+    let space_metric = if !font_space_candidate
+        && super::missing_lineseg_indented_cell_has_uniform_metrics_with_tracking(para, styles)
+    {
+        SpaceMetric::HalfCell
+    } else {
+        SpaceMetric::Stored
+    };
     let mut tokens = tokenize_paragraph_with_regenerated_space_metric(
         &text_chars,
         &para.char_offsets,
@@ -2909,7 +2931,14 @@ fn layout_paragraph_in_frame_impl(
     if kerning_failed {
         // 한 boundary라도 예산/범위 검증에 실패하면 일부 K1 row를 게시하지
         // 않고 문단 전체를 원래 scalar transaction으로 다시 실행한다.
-        return layout_paragraph_in_frame_impl(para, frame, styles, dpi, false);
+        return layout_paragraph_in_frame_impl(
+            para,
+            frame,
+            styles,
+            dpi,
+            false,
+            font_space_candidate,
+        );
     }
     result
 }
