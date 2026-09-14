@@ -5,53 +5,43 @@ canonical: mydocs/manual/pr_review_workflow.md
 last_verified: 2026-09-14
 ---
 
-# Dependabot #7121~#7128 통합 리뷰·검증
+# PR #7121 GPU 의존성 메인터너 보정 리뷰·검증
 
 ## 결론과 식별
 
-**8개 PR 모두 통합 제출 가능. #7121은 메인터너 보정과 검증을 완료한 통합본만 수용한다.**
-개별 원 head를 일괄 승인한 것이 아니며, 원 PR 녹색 CI로 통합 head의 검증을 대신하지 않았다.
-통합 PR의 최신 CI·승인·merge 및 원 PR 종료는 아직 수행하지 않았다.
+**현재 신규 처리 대상은 #7121 한 건이다. 메인터너 보정과 검증을 완료한 후보만 수용한다.**
+#7122~#7128은 검증 도중 다른 경로로 이미 merge되어 최신 devel에 포함됐다. 다시 제출하거나 종료하지 않는다.
+#7121 원 head의 GPU 실패와 보정본의 수용 근거를 구분하며, 이미 merge된 의존성 변경을 새 PR 변경으로 계산하지 않는다.
+#7121 보정 PR 생성·최신 CI·승인·merge 및 원 PR 종료는 아직 수행하지 않았다.
 
 - 브랜치: `review/dependabot-20260914`, 원격 제출: `upstream`의 동명 branch -> `devel`.
-- 기준: `93ffc3dd59c120bd54df4c2ac6d1ddbe630f8a2d`, 작업 시작 시 upstream/devel 동기화 완료.
+- 최초 검증 기준: `93ffc3dd59c120bd54df4c2ac6d1ddbe630f8a2d`.
+- 최종 rebase 기준: `upstream/devel@0c581f7e9a2a910f6edfca9045ea04fffbdb43d3`. 문서 충돌은 양쪽 기록을 보존해 해결했다.
+- rebase 후 보정 commit: `64b393e63488eed2a24f8fe307685e1386f0414b`, 기록 포함 head: `6d5f9d4d1`.
 - 실제 기능 검증 head: `00b5dc1059d129d445ec012c47dfc76788b6f7d3`.
+- rebase 때 검증 후 기록 commit `e3453941d`와 `mydocs/**`를 제외한 tracked 파일 전체의 차이가 없음을 확인했다. 코드·의존성·테스트·워크플로가 같아 테스트를 반복하지 않았다.
 - 검증 후 추가 범위는 review·오늘할일·대표 PNG와 Cargo.toml의 버전 설명 주석뿐이다. 의존성 값, 소스, 테스트와 baseline은 다시 바꾸지 않는다.
-- [통합 PR 조회](https://github.com/edwardkim/rhwp/pulls?q=is%3Apr+head%3Areview%2Fdependabot-20260914).
+- [#7121 보정 PR 조회](https://github.com/edwardkim/rhwp/pulls?q=is%3Apr+head%3Areview%2Fdependabot-20260914).
 - 절차: collaborator 외부 PR 통합 경로, local_validation 4.3 변경 범위별 게이트.
-- 모든 원 PR은 `git cherry-pick -x`로 적용했다. 충돌은 없었으며 작성자와 원 SHA를 보존했다.
+- #7121은 `git cherry-pick -x`로 적용해 작성자와 원 SHA를 보존했다. 이미 devel에 반영된 나머지 7건의 중복 변경은 rebase에서 제외됐다.
 
-| 원 PR | 적용 원 head | 통합본 판정 |
-| --- | --- | --- |
-| [#7121](https://github.com/edwardkim/rhwp/pull/7121) | `cd00c2b6316ba340b71886045920ab0431e1b42a` | 메인터너 보정 후 수용 가능 |
-| [#7122](https://github.com/edwardkim/rhwp/pull/7122) | `267cb4c8e97098714154c2ec2803ed7de6d85f27` | 승인 |
-| [#7123](https://github.com/edwardkim/rhwp/pull/7123) | `68844f81cf165251274d6954c4e0cf95046172e8` | 승인 |
-| [#7124](https://github.com/edwardkim/rhwp/pull/7124) | `eeba403b869ea00407f3cbfa46800710049ba084` | 승인 |
-| [#7125](https://github.com/edwardkim/rhwp/pull/7125) | `ed495048782604aa0971912e01f762c5911d18d9` | 승인 |
-| [#7126](https://github.com/edwardkim/rhwp/pull/7126) | `efb2ece48561c5c7d899a78f832d9aed8e619cdf` | 승인 |
-| [#7127](https://github.com/edwardkim/rhwp/pull/7127) | `993528b413a350ae50e7aea23984631b7ebbde98` | 승인 |
-| [#7128](https://github.com/edwardkim/rhwp/pull/7128) | `47d930d3929083e9e04c125ce9d0679325082e01` | 승인 |
+## 검토 대상과 현재 PR 변경 범위
 
-사용자 지시에 따라 개별 review 파일 없이 이 문서 하나에 원 PR별 판정과 근거를 모은다.
-Reviewer `jangster77`를 원 PR 8개에 요청했다. bot PR이므로 첫 기여자 절차는 적용하지 않는다.
+- 원 PR: [#7121](https://github.com/edwardkim/rhwp/pull/7121), 작성자 `dependabot[bot]`, base `devel`.
+- 원 head: `cd00c2b6316ba340b71886045920ab0431e1b42a`.
+- Reviewer: `jangster77`. bot PR이므로 첫 기여자 절차는 적용하지 않는다.
+- 원 head 판정: GPU feature의 두 E0308로 머지 보류.
+- 보정본 판정: **메인터너 보정 후 수용 가능**. 의존성 정렬과 실제 검증을 완료했으며 원 head 단독 승인은 아니다.
+- 제품 변경 파일: `Cargo.toml`, `Cargo.lock`. GPU 의존성과 해당 설명 주석만 변경한다.
+- 기록·증적: 이 review, 오늘할일, 대표 GPU/CPU PNG 두 장.
+- 변경하지 않는 범위: GPU renderer 소스, 기본 PDF/Native Skia 의존성 설정, Studio·확장 패키지, workflow, 테스트와 baseline.
+- 사용자 지시에 따라 이번 보정 review는 이 파일 하나로 관리한다. upstream의 기존 개별 검토 기록은 수정하거나 삭제하지 않는다.
 
-## PR별 검토와 접수 CI
+## 원 PR CI와 보정본의 구분
 
-원 head의 Build & Test 성공을 접수 시 확인했지만, 통합 검증은 위 별도 코드 head에서 실행했다.
-아래 승인 판정은 통합본 기준이다. #7121 원 head 자체의 GPU 실패를 승인으로 바꾸지 않는다.
-
-| PR | 검토 범위와 수용 근거 | 원 head CI |
-| --- | --- | --- |
-| #7121 | vello_svg 0.11 단독 bump는 Tree/Scene 타입 불일치. GPU 의존성을 함께 보정한 뒤 GPU check·Clippy·build·실제 PNG 출력 통과. | [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800350025/job/103844275852) |
-| #7122 | encoding_rs 0.8.41 lock 및 전이 의존성 갱신. encoding/CP949 집중 10개와 전체 회귀 통과. EUC-KR 모든 매핑 전수 검사는 아님. | [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800351381/job/103844786691) |
-| #7123 | Studio Vite 8.3.0 및 관련 lock. npm ci, TypeScript/PWA build, 단위 1,692개와 새 WASM의 실제 열기·저장 통과. | [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800352557/job/103843259271) |
-| #7124 | Studio @types/chrome 0.2.9 타입 전용 갱신. TypeScript/build 및 실제 브라우저 통과. manifest·권한 변화 없음. | [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800357352/job/103843397207) |
-| #7125 | Chrome Vite 8.3.0 및 lock. npm ci/build, page-budget 4개, packaged viewer/options/print/service worker/content script smoke 통과. | [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800361317/job/103843803169) |
-| #7126 | Firefox Vite 8.3.0 및 lock. npm ci/build, 실제 다운로드 3건 및 편집 보존 통과. profile 경로 오류는 홈 TMPDIR로 해결. | [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800365995/job/103844064999) |
-| #7127 | taiki-e/install-action SHA 9534c84618278caac52cb373bb164ed464dbd8af(v2.87.11) 고정. tool: nextest, trigger/permissions 유지. actionlint·workflow 계약 15개 통과. | [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800365463/job/103845032284) |
-| #7128 | skia-safe/skia-bindings 0.153.3 lock 갱신. Native Skia lib 4,112개, PNG 2개, PDF 4개 통과. 전체 한컴 fidelity 개선 주장은 아님. | [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800366814/job/103845313843) |
-
-#7123~#7126의 Rust Lint는 원 PR CI에서 SKIPPED, CodeQL은 NEUTRAL이었다. 이를 실행 통과로 계산하지 않는다.
+원 head의 [Build & Test SUCCESS](https://github.com/edwardkim/rhwp/actions/runs/34800350025/job/103844275852)를
+접수 시 확인했지만 optional GPU 경로는 로컬에서 실패했다. 녹색 CI만으로 수용하지 않고
+아래 GPU 보정과 전체 회귀를 실행했다. 원 PR CI는 새 보정 PR의 최신 head CI를 대신하지 않는다.
 
 ## GPU 보정 이력과 원인
 
@@ -84,7 +74,8 @@ CARGO_BUILD_JOBS=4 cargo check --locked --features gpu --lib --target-dir target
 
 ## 실제 검증 결과
 
-아래는 최종 기능 head 기준이다. 로그는 `output/dependabot-20260914/`에만 보관한다.
+아래는 GPU 보정을 포함한 최종 기능 head 기준이다. 로그는 `output/dependabot-20260914/`에만 보관한다.
+Native Skia·Studio·확장·workflow 검사는 기존 기능의 회귀 확인 기록이며 해당 파일을 이번 PR에서 바꾼다는 뜻이 아니다.
 
 | 검사 | 결과 |
 | --- | --- |
@@ -183,22 +174,21 @@ Vulkan llvmpipe(Cpu) 어댑터에서 실행했으므로 물리 GPU 성능 증거
 대표 두 PNG만 commit하고 로그, JSON, generated suite, pkg/dist, Firefox 임시 profile 및 HTML 보고서는 제외한다.
 원본 HWP는 기존 commit 경로를 재사용하며 PDF나 중복 입력을 새로 만들지 않았다.
 
-## 제출 및 후속 처리 경계
+## #7121 보정 PR 제출 및 merge 후 comment 계획
 
-## Merge 후 원 PR comment 계획
-
-현재 단계는 통합 PR 제출이며 원 PR 종료, merge, 원격 브랜치 삭제는 수행하지 않는다.
-통합 PR merge 후 실제 merge SHA·최신 CI와 위 원 PR head 포함 관계를 확인한다.
-그 뒤 각 원 PR에 아래 공통 내용을 한국어 `--body-file`로 게시하고 API로 본문·링크를 재조회한 다음 종료한다.
-원 PR별 review 파일이나 별도 기록 PR은 만들지 않는다.
+현재 단계는 #7121 보정 PR 제출 준비이며 원 PR 종료, merge, 원격 브랜치 삭제는 수행하지 않는다.
+보정 PR merge 후 실제 merge SHA·최신 CI와 #7121 원 head 및 보정 포함 관계를 확인한다.
+그 뒤 #7121에 아래 내용을 한국어 `--body-file`로 게시하고 API로 본문·링크를 재조회한 다음 종료한다.
+이미 merge된 #7122~#7128에는 이 작업으로 중복 코멘트·종료 처리를 하지 않는다.
+추가 개별 review 파일이나 별도 기록 PR은 만들지 않는다.
 
 ```text
-이 PR의 원 head <원-head-sha>를 통합 PR <통합-PR-URL>에 반영했습니다.
-통합 merge SHA: <merge-commit-sha>
-판정: <위 표의 해당 PR 판정>
+#7121 원 head cd00c2b6316ba340b71886045920ab0431e1b42a를 GPU 보정 PR <보정-PR-URL>에 반영했습니다.
+보정 PR merge SHA: <merge-commit-sha>
+판정: 메인터너 보정 후 수용 가능 (보정·검증 완료)
 검증 코드 head: 00b5dc1059d129d445ec012c47dfc76788b6f7d3
-검증 및 범위·한계: <merge-SHA-고정-이-통합-review-URL>
-통합 PR 최신 CI: <실제-통합-head-CI-URL>
+검증 및 범위·한계: <merge-SHA-고정-pr_7121_review_impl.md-URL>
+보정 PR 최신 CI: <실제-보정-head-CI-URL>
 ```
 
 #7121에는 원 head의 두 타입 불일치와 보정 commit을 분리해 설명한다.
