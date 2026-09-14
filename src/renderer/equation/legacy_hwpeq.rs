@@ -52,15 +52,20 @@ pub(crate) fn normalize(script: &str) -> Option<String> {
     }
     let chars: Vec<char> = script.chars().collect();
     let mut cursor = Cursor { chars, pos: 0 };
-    Some(cursor.parse_sequence(false))
+    cursor.parse_sequence(false, 0)
 }
 
 /// `\TAB` 명령이 들어 있는지. `\TABLE` 같은 더 긴 이름은 세지 않는다.
 fn has_tab_command(script: &str) -> bool {
     let bytes: Vec<char> = script.chars().collect();
+    let mut quoted = false;
     let mut i = 0;
     while i + 3 < bytes.len() {
-        if bytes[i] == '\\'
+        if bytes[i] == '"' {
+            quoted = !quoted;
+        }
+        if !quoted
+            && bytes[i] == '\\'
             && bytes[i + 1] == 'T'
             && bytes[i + 2] == 'A'
             && bytes[i + 3] == 'B'
@@ -107,14 +112,34 @@ impl Cursor {
     /// 인자 하나를 읽는 모든 경로가 이 함수를 `true` 로 부르므로, `\TAB` 의 종결 의미가
     /// 한 곳에서만 구현된다. 최상위(`false`)에서 만나는 `\TAB` 은 짝이 없으므로 버린다 —
     /// 원본 스크립트는 대부분 `\TAB` 으로 끝난다.
-    fn parse_sequence(&mut self, until_tab: bool) -> String {
+    fn parse_sequence(&mut self, until_tab: bool, depth: u32) -> Option<String> {
+        // 정규화도 AST parser와 같은 중첩 예산을 사용한다. 초과 시 부분 변환을
+        // 반환하지 않고 원문 tokenizer로 돌려보내 기존 parser의 제한을 적용한다.
+        if depth >= super::parser::MAX_EQ_DEPTH {
+            return None;
+        }
         let mut out = String::new();
         while !self.at_end() {
+            // 현행 tokenizer의 read_quoted와 같은 경계다. 방언 인자 안에서도
+            // 따옴표 안의 \TAB, \BAR 등을 명령으로 소비하지 않는다.
+            if self.chars[self.pos] == '"' {
+                out.push('"');
+                self.pos += 1;
+                while !self.at_end() {
+                    let ch = self.chars[self.pos];
+                    out.push(ch);
+                    self.pos += 1;
+                    if ch == '"' {
+                        break;
+                    }
+                }
+                continue;
+            }
             let Some(name) = self.peek_command() else {
                 // `\(` 는 알파벳이 아니라 위에서 안 걸린다.
                 if self.chars[self.pos] == '\\' && self.chars.get(self.pos + 1) == Some(&'(') {
                     self.pos += 2;
-                    let inner = self.parse_sequence(true);
+                    let inner = self.parse_sequence(true, depth + 1)?;
                     out.push_str(" left ( ");
                     out.push_str(inner.trim());
                     out.push_str(" right ) ");
@@ -129,13 +154,13 @@ impl Cursor {
                 "TAB" => {
                     self.consume_command(&name);
                     if until_tab {
-                        return out;
+                        return Some(out);
                     }
                     // 짝 없는 종결자 — 버린다.
                 }
                 "SUB" | "SUP" => {
                     self.consume_command(&name);
-                    let arg = self.parse_sequence(true);
+                    let arg = self.parse_sequence(true, depth + 1)?;
                     // 첨자는 **앞** 피연산자에 붙는다. 현행 토크나이저는 `_`/`^` 로만
                     // 결합하므로 사이의 공백을 지워 붙여 준다.
                     while out.ends_with(' ') {
@@ -148,8 +173,8 @@ impl Cursor {
                 }
                 "OVER" => {
                     self.consume_command(&name);
-                    let numerator = self.parse_sequence(true);
-                    let denominator = self.parse_sequence(true);
+                    let numerator = self.parse_sequence(true, depth + 1)?;
+                    let denominator = self.parse_sequence(true, depth + 1)?;
                     out.push_str(" {");
                     out.push_str(numerator.trim());
                     out.push_str("} over {");
@@ -158,7 +183,7 @@ impl Cursor {
                 }
                 "BAR" => {
                     self.consume_command(&name);
-                    let arg = self.parse_sequence(true);
+                    let arg = self.parse_sequence(true, depth + 1)?;
                     out.push_str(" bar {");
                     out.push_str(arg.trim());
                     out.push_str("} ");
@@ -176,6 +201,6 @@ impl Cursor {
                 }
             }
         }
-        out
+        Some(out)
     }
 }

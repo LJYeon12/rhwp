@@ -230,3 +230,44 @@ fn issue_7105_current_syntax_scripts_are_untouched() {
         "#7105: 현행 `_` 첨자 계약 유지: {ast:?}"
     );
 }
+
+#[test]
+fn issue_7105_quoted_commands_are_literal_in_current_and_legacy_scripts() {
+    use rhwp::renderer::equation::tokenizer::{TokenType, Tokenizer};
+    for script in [
+        r#"rm "\TAB""#,
+        r#"rm "literal \TAB label""#,
+        r#"rm "\TAB unterminated"#,
+    ] {
+        let tokens = tokenize(script);
+        let original = Tokenizer::new(script).tokenize();
+        assert_eq!(format!("{tokens:?}"), format!("{original:?}"), "{script}");
+    }
+    // 바깥에는 실제 방언 TAB이 있어 정규화를 타지만, 인자 안의 TAB/BAR는 문자열이다.
+    let tokens = tokenize(r#"I \SUB "\TAB \BAR" \TAB"#);
+    let quoted: Vec<_> = tokens
+        .iter()
+        .filter(|t| t.ty == TokenType::Quoted)
+        .map(|t| t.value.as_str())
+        .collect();
+    assert_eq!(quoted, [r"\TAB \BAR"]);
+}
+
+#[test]
+fn issue_7105_deep_legacy_input_respects_parser_resource_limit() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            // 검토에서 실제 tokenizer를 SIGABRT로 끝낸 220002-byte 입력.
+            let script = "\\BAR ".repeat(20_000) + "A " + &"\\TAB ".repeat(20_000);
+            let tokens = tokenize(&script);
+            assert!(!tokens.is_empty());
+            // 깊이 초과에서 일부만 정규화한 script를 반환하지 않는다.
+            let original = rhwp::renderer::equation::tokenizer::Tokenizer::new(&script).tokenize();
+            assert_eq!(tokens.len(), original.len());
+            assert_eq!(tokens[0].value, original[0].value);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
