@@ -5400,7 +5400,16 @@ impl LayoutEngine {
             if missing_tac_width > 0.0 && total_text_width < total_tac_width_in_line {
                 total_text_width += missing_tac_width;
             }
-            let is_last_line_of_para = line_idx == end - 1 && end == composed.lines.len();
+            // 빈 후속 lane은 같은 물리 행의 배제 영역을 표현할 뿐, 다음 글줄이 아니다.
+            // 마지막 가시 segment를 일반 문단 마지막 줄처럼 정렬한다.
+            let is_last_line_of_para = end == composed.lines.len()
+                && (line_idx == end - 1
+                    || (physical_frame_rows
+                        && para.is_some_and(|p| {
+                            p.line_segs[line_idx + 1..end]
+                                .iter()
+                                .all(|s| s.tag & LineSeg::TAG_EMPTY_SEGMENT != 0)
+                        })));
 
             // 정렬별 간격 분배 계산
             let has_forced_break = comp_line.has_line_break;

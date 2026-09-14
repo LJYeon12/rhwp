@@ -83,3 +83,32 @@ fn issue_6970_behind_text_pictures_do_not_reserve_a_side_lane() {
         "BehindText는 본문 뒤에 겹칠 수 있다"
     );
 }
+
+/// 같은 행의 빈 우측 lane을 다음 글줄로 세어 마지막 제목을 벌리면 안 된다.
+#[test]
+fn issue_6970_empty_wrap_lane_does_not_justify_final_heading() {
+    let core = source();
+    let tree = core.build_page_render_tree(1).unwrap();
+    fn collect(node: &RenderNode, found: &mut Vec<(usize, f64)>) {
+        if let RenderNodeType::TextRun(run) = &node.node_type {
+            if let Some(index @ (88 | 93 | 99)) = run.para_index {
+                if !run.text.is_empty() {
+                    found.push((index, node.bbox.width));
+                }
+            }
+        }
+        for child in &node.children {
+            collect(child, found);
+        }
+    }
+    let mut found = Vec::new();
+    collect(&tree.root, &mut found);
+    for (index, width) in [(88, 64.0), (93, 32.0), (99, 48.0)] {
+        assert!(
+            found
+                .iter()
+                .any(|(i, w)| *i == index && (*w - width).abs() < 0.5),
+            "12pt 전각 제목의 자연 폭을 보존해야 한다: {found:?}"
+        );
+    }
+}
