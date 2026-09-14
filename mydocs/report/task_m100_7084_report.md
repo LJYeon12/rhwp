@@ -3,9 +3,10 @@
 - Issue: [#7084](https://github.com/edwardkim/rhwp/issues/7084)
 - 작성: 2026-09-14, 같은 날 메인테이너 최종 결과 승인.
 - 계획: [수행계획](../plans/task_m100_7084.md), [구현계획](../plans/task_m100_7084_impl.md).
-- 최종 제품/테스트: `230f801136a4fc73725b847fe56c49b2c11c88bd`.
+- 통합 전 제품/테스트: `230f801136a4fc73725b847fe56c49b2c11c88bd`.
+- 최신 devel 통합 검증 후보: **`d3a189d5d964e4e6eb3b376062df846744c4c58d`** (base `11860a9f4`).
 - 선행 검증 기록: `925e2cf9d`. 이번 보고서 통합은 제품 변경이 아니다.
-- 상태: 승인 범위의 로컬 구현·검증 및 최종 보고서 승인 완료. 최신 devel 통합·원격 제출·CI·병합·이슈 종료는 남았다.
+- 상태: 최종 보고서 승인, 최신 devel 통합·통합본 로컬 검증 완료. 원격 제출·CI·self-review·병합·이슈 종료는 남았다.
 
 ## 1. 결과 요약
 
@@ -51,7 +52,9 @@ paragraph 12 → control 1 → cell 5 → cell paragraph 0이다.
 가로 변환으로 이어졌다. 두 포맷의 문자·서식은 보존되어 있었고, UTF-16 문자 소실이나
 사용자가 36% 장평을 지정한 현상은 아니었다.
 
-동일 입력의 한컴 2020 PDF는 Segoe UI Emoji subset의 약 1.373em 진행폭을 사용했다.
+동일 입력의 한컴 PDF는 Segoe UI Emoji subset의 약 1.373em 진행폭을 사용했다.
+MCP engine/profile 선택은 2020, 실제 응답 Hancom 버전은 12.0.0.4605다. PDF 파일명의 2020을
+실제 제품 11.x를 확인했다는 뜻으로 해석하지 않는다.
 브라우저의 실제 대체 face 이름은 확정하지 않았으며, 한컴의 face와 동일하다고 추정하지 않는다.
 외부 엔진 조사도 공개 구현/API가 보여 주는 선택·측정·그리기 일치 원칙의 근거로 사용했을 뿐,
 Word나 Pages의 비공개 내부 구현을 확인했다고 주장하지 않는다.
@@ -93,7 +96,7 @@ Word나 Pages의 비공개 내부 구현을 확인했다고 주장하지 않는�
 
 ## 4. 검증 결과와 소스 대응
 
-Rust 최종 검증 제품은 `281fb2826`, Studio 최종 검증 제품은 `230f80113`이다.
+아래 첫 표는 **devel 통합 전 증적**이다. Rust 검증 제품은 `281fb2826`, Studio는 `230f80113`이다.
 두 커밋 사이 Rust/Cargo/build 입력 차이는 없으며, 새 Docker WASM도 byte-identical하다.
 **Rust 전체 검사를 `230f80113`에서 다시 실행했다고 보고하지 않는다.** 동일 입력의 Stage 5
 증적과 변경된 Studio의 Stage 6 재검증을 구분한다.
@@ -117,7 +120,7 @@ Rust 최종 검증 제품은 `281fb2826`, Studio 최종 검증 제품은 `230f80
 | 직접 PDF gate | 3/3 PASS; 1.158954% / 0.390370% / 0.676720%, 각 2% 이하 | Stage 5 |
 | E2E 등록 검사 | 132 tracked / 132 등록, PASS | Stage 6 |
 
-최종 WASM: **11,080,648 bytes**, SHA-256
+통합 전 WASM: **11,080,648 bytes**, SHA-256
 `9a7500e19b1bf9e195eb7331697aed5edfc65214b77cda38f0ef0891ba58ca77`.
 Chrome `152.0.7977.83`이 HTTP로 받은 bytes/hash와 디스크 산출물이 일치했다.
 이번 보고서 작성에서도 디스크 hash와 integration/npm 로그의 최종 집계를 재확인했다.
@@ -132,18 +135,53 @@ Chrome `152.0.7977.83`이 HTTP로 받은 bytes/hash와 디스크 산출물이 �
 `CHROME_CDP=http://localhost:19222 npm --prefix rhwp-studio run e2e:canvas-metric-recovery`다.
 `output/`의 실행 진단·이미지·계측 스크립트는 로컬 증적이며 GitHub에서 다운로드 가능한 첨부가 아니다.
 
+### 4.1 최신 devel 통합 후 재검증
+
+승인 후 devel `11860a9f4`를 일반 merge했다. 충돌 3곳은 두 WASM 모듈과 양쪽 오늘할일 기록을
+모두 보존해 해결했다. 자동 병합된 하이퍼링크·TAC·PDF 경로도 같은 후보에서 검사했다.
+후보 **`d3a189d5d`**의 결과이며, 명령·로그·입력 hash·경고는
+[Stage 7](../working/task_m100_7084_stage7.md#6-통합-후보-전체-검증-완료)에 기록했다.
+
+| 검사 | 통합 후 결과 |
+| --- | --- |
+| Rust 전체 nextest `--tests` | **9,814 PASS / 51 skipped / 0 FAIL**; lib·integration 포함 |
+| 별도 lib / 집중 | 4,055 PASS / 13 ignored; 84 PASS (전체 수에 중복 합산하지 않음) |
+| Native Skia 3종 | lib 4,112 PASS / 13 ignored, 그림 2 PASS, PDF 4 PASS |
+| fmt·세 Clippy·workspace build·doctest·검증 정책 | 모두 PASS, doctest 8 PASS / 3 ignored |
+| 폰트 projection 생성기 | 14 PASS |
+| Docker WASM·TypeScript·production build | 모두 PASS |
+| Studio npm | **1,692 PASS / 2 skipped / 0 FAIL** |
+| 실제 Chrome 원본·서식·portable 복원·결합열 보호 | HWP/HWPX PASS |
+| 오류 복구 / renderer·Undo 계약 | 12/12 조건 PASS / PASS, Undo 24 assertion |
+| 기본 Render Diff / 직접 PDF gate | **3/3 PASS / 3/3 PASS**, 기존 허용치 유지 |
+| E2E 등록 / PDF 저장 정책 | 134/134, PASS / PASS |
+
+통합 WASM은 **11,182,083 bytes**, SHA-256
+`61465d69c436028b5f5c8db93297a92fb7283cb58450ce0525b5b342943c1b9a`이며 Chrome이 받은
+HTTP bytes와 일치했다. Docker 전체 7분 24초는 이번 단일 실행값이고 성능 인과 비교가 아니다.
+별도 report-only PDF 비교는 72 DPI 크기 차이 경고 4건이 있었으며 직접 PDF gate 실패가 아니다.
+원본과 PDF 네 파일의 실제 bytes와 후보 commit이 일치했다. 기준 PDF 등록에는 쪽수 원장
+신규 2/2 행 두 개만 추가했으며, 기존 기대값을 바꾸지 않았다.
+
 ## 5. 시각 판정과 증적
 
-- 독립 한컴 기준: `output/7084/oracle/stage11-filled-hwp-2020.pdf`,
-  `output/7084/oracle/stage11-filled-hwpx-2020.pdf`.
-- 최신 화면: `output/7084/stage6/connected/hwp-after.png`,
-  `output/7084/stage6/connected/hwpx-after.png`.
+- 독립 한컴 기준(후보 commit에 보존): `pdf/issue3587/c-form-labnote-001-stage11-filled-hwp-2020.pdf`,
+  `pdf/issue3587/c-form-labnote-001-stage11-filled-hwpx-2020.pdf`.
+- 최신 통합 화면: `output/7084/stage7/connected/hwp-after.png`,
+  `output/7084/stage7/connected/hwpx-after.png`.
 - 실행 비교: 같은 폴더의 `runtime.json` 및 기능 비활성 대조 이미지.
+- 표준 compare·overlay·review 패널: `output/7084/stage7/visual/{hwp,hwpx}/`.
 
 기존 메인테이너의 HWP/HWPX 시각 통과 판정을 유지한다. 이후 실제 브라우저 재검사에서
 원본 두 건의 배율 1/1과 비활성 대조 0.364245/1을 재확인했다. 새로운 한컴 PDF를 생성하거나
 자동 픽셀 검사로 메인테이너의 최종 판단을 대신하지 않았다. 흑백/컬러 글리프 모양 차이,
 표 간격 등 별도 결함까지 해결했다고 주장하지 않는다.
+
+통합본 두 화면은 각각 Stage 6의 승인 유지 화면과 PNG hash가 동일하다. 실제 Canvas와 기준 PDF를
+형식별 2쪽 한 장씩 비교해 pixel match 90.78317%, 내용 중심 보조값 6.68869%를 얻었다.
+대표 패널을 직접 확인했다. 보조값이 낮은 것은 표 간격·글꼴·글리프 모양 등 잔여 차이도
+반영하기 때문이며, 이모지 성공률이나 전체 fidelity 통과율이 아니다. 대표 PNG의 PR 번호 기반
+안정 경로 보존은 Open PR 채번 뒤 self-review 절차에서 한다.
 
 ## 6. 성능·자원 비용
 
@@ -179,16 +217,13 @@ Stage 6 복구는 실패 처리 경로에 연결했으며, 이를 정상 paint �
 남은 순서는 다음과 같다.
 
 1. 메인테이너의 최종 보고서·완료 범위 승인 — 2026-09-14 완료.
-2. 제출 전 최신 `upstream/devel`과 충돌·변경 범위 확인, 필요 통합 및 해당 소스의 제출 게이트 확인.
-   검증용 파생 suite/manifest·로컬 폰트·접속정보를 제출 대상에서 제외한다.
+2. 최신 `upstream/devel` 통합 및 같은 후보 검증 — **Stage 7에서 완료**.
+   파생 suite/manifest·로컬 폰트·접속정보·pkg/dist/output을 제출 대상에서 제외한다.
 3. 별도 승인 후 원격 push·PR 생성·트리야지, 최종 HEAD의 CI 확인과 self-review.
 4. 승인된 병합 절차 후 #7084의 종료 근거 게시·close 및 로컬 동기화.
 
-이번 절차는 보고서와 계획/오늘할일 기록만 통합한다. 원격 push·PR·댓글·이슈 상태를 변경하지 않는다.
-
-최종 결과 승인 후 최신 devel 확인에서 실제 충돌 3곳을 발견했다.
-[제출 전 통합 점검](../working/task_m100_7084_stage7.md)의 해결 방침 승인 후 통합본을 재검증한다.
-위 기존 결과는 명시한 소스의 증적이며, 아직 만들지 않은 통합본의 통과 결과가 아니다.
+승인된 통합 절편을 완료했고 결과는 로컬 문서 commit으로 보존한다. 원격 push·Open PR 생성은
+다음 승인 대상이며, 댓글·원격 병합·이슈 상태는 변경하지 않았다.
 
 ## 8. 용어·약어 미주
 

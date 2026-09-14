@@ -69,7 +69,7 @@
 별도 이슈 생성을 추가하지 않는다. 새 소스가 통합되므로 기존 Stage 5/6 전체 결과를 통합본에
 그대로 재사용할 수 없다. 이번 점검에서는 긴 테스트·빌드를 시작하지 않았다.
 
-## 4. 현재 상태
+## 4. 승인 전 점검 상태 (과거 기록)
 
 - 최종 보고서 승인 기록을 반영했다.
 - fetch·정확한 SHA 비교·충돌 시뮬레이션과 변경 영향 점검을 완료했다.
@@ -84,7 +84,7 @@ commit으로 갱신했고, fmt 및 #7084 session 집중 11건이 통과했다.
 이후 전체 게이트는 기준 PDF 보존·쪽수 원장 추가를 포함한 후보로 실행한다.
 
 기존 `output/7084/oracle/` PDF 2개는 추적 중인 `pdf/`·`samples/` PDF와 크기/내용 hash를
-대조했으며 같은 bytes의 파일이 없었다. 재변환 없이 다음 경로에 복사한다.
+대조했으며 같은 bytes의 파일이 없었다. 재변환 없이 다음 경로에 복사해 `d3a189d5d`에 커밋했다.
 
 | 원본 (기존 Git 파일) | PDF 정식 경로 | PDF SHA-256 |
 | --- | --- | --- |
@@ -98,9 +98,119 @@ PDF는 각 24,211/24,215 bytes, 2쪽, 595×841pt, Creator/Producer `Hancom PDF 1
 
 `regenerate.py`의 `rhwp_info`와 `pick_oracles`를 이번 두 입력에 한정해 호출했다.
 통합본 native CLI는 각각 2쪽·모아찍기 false였고, 형식별 위 PDF를 정확히 선택했다.
-독립 PDF의 2쪽을 기대값으로 기존 쪽수 원장에 **2/2 신규 행 두 개만** 추가한다.
+독립 PDF의 2쪽을 기대값으로 기존 쪽수 원장에 **2/2 신규 행 두 개만** 추가했다.
 기존 행이나 허용치는 변경하지 않고 관련 원장 검사는 전체 integration에 포함해 재실행한다.
 두 원본은 새 sample이 아니며, 바이너리 입력은 변경하지 않았다.
+
+## 6. 통합 후보 전체 검증 완료
+
+검증 후보는 **`d3a189d5d964e4e6eb3b376062df846744c4c58d`**, 포함된 devel은 `11860a9f4`다.
+Rust는 기존 `/home/edward/mygithub/rhwp-rust-review-7084-c`를 같은 SHA로 갱신해 실행했고,
+고정 target `/home/edward/mygithub/rhwp/target/pr-review`를 재사용했다.
+새 worktree·branch·target은 만들지 않았다. 아래 로그는 `output/7084/stage7/` 기준이다.
+
+| 검사 | 결과 | 로그 |
+| --- | --- | --- |
+| session 단독 집중 | 11 PASS, merge `27b28af13`에서 실행 | `focused-session.log` |
+| 메트릭·shaping·하이퍼링크·TAC·PDF 합성 굵게 집중 | 84 PASS | `focused.log` |
+| release-test lib | 4,055 PASS / 13 ignored | `lib.log` |
+| nextest 전체 `--tests` (lib와 integration 포함) | **9,814 PASS / 51 skipped / 0 FAIL**, 358.987초 | `integration.log` |
+| Native Skia lib / 그림 / 직접 PDF 집중 | 4,112 PASS / 13 ignored; 2 PASS; 4 PASS | `native-skia-lib.log`, `native-picture.log`, `native-pdf.log` |
+| fmt, native·WASM32·workspace all-target Clippy, workspace build | 모두 PASS, 세 Clippy `-D warnings` | `fmt.log`, `clippy-*.log`, `workspace-build.log` |
+| doctest | 8 PASS / 3 ignored | `doctest.log` |
+| integration manifest / source unit-tier | PASS, 48/48 targets / 4,205 test 분류 | `manifest.log`, `unit-tier.log` |
+| 기준 PDF 저장 정책 | PASS, 1,265 PDFs, LFS pointer 없음 | `pdf-policy.log` |
+| 통합된 폰트 projection 생성기 검사 | 14 PASS | `font-rule-projection.log` |
+| Docker WASM | PASS, 전체 7분 24초 (Rust compile 4분 24초 포함) | `docker-wasm.log` |
+| TypeScript / Studio production build | PASS / PASS | `typescript.log`, `production-build.log` |
+| Studio 전체 npm test | **1,692 PASS / 2 skipped / 0 FAIL** | `npm-test.log` |
+| E2E manifest | 134 tracked / 134 등록, PASS | `e2e-manifest.log` |
+| 실제 Windows Chrome 원본·서식·portable 복원 | HWP/HWPX PASS; 장평 64%, 첨자, 120% 굵게/기울임 PASS | `connected/runtime.json` |
+| VS16/ZWJ 서식 경계 | 두 형식 × 두 종류 PASS, 부분 요청·적용 없음 | `run-boundary.json` |
+| Canvas 오류 복구 | 두 형식 × 6조건 **12/12 PASS**, 70 assertion | `browser-recovery.json`, `browser-recovery.log` |
+| renderer backend 계약 / Undo 계약 | PASS / 24 assertion PASS | `renderer-contract.log`, `undo-contract.log` |
+| 기본 Render Diff | **3/3 PASS**, 0.01593% / 0% / 0% | `render-diff-results.json` |
+| 직접 PDF compatibility gate | **3/3 PASS**, 1.158954% / 0.390370% / 0.676720%, 각각 2% 이하 | `direct-pdf-results.json` |
+
+nextest `--tests`의 9,814에는 lib가 포함된다. lib·집중 검사를 합산한 수를 고유 테스트 수로
+보고하지 않는다. 최종 fmt 실행도 review tree에 tracked 변경을 만들지 않았다.
+
+Rust 재현은 review tree에서 `node scripts/rust-test-suite-manifest.mjs --prepare` 후
+`cargo test --locked --profile release-test --lib --target-dir <고정 target>`와
+`cargo nextest run --locked --cargo-profile release-test --target-dir <고정 target> --tests --no-fail-fast`다.
+집중 filter는 `issue_7084_`, `issue_4969_shaping_emitted_run_mapping`,
+`issue_4969_shaping_atomic_activation`, `issue_6963_hyperlink_`, `issue_7103_tac_table_rewind`,
+`issue_6936_pdf_synthetic_bold`를 OR로 선택했다. Native Skia 3종과 세 Clippy는
+`pr_review/local_validation.md` 4.3의 명령을 같은 target에서 순차 실행했다.
+
+WASM은 기본 checkout에서 `docker compose --env-file .env.docker run --rm wasm`으로 만들었다.
+Studio에서 `npx tsc --noEmit`, `npm test`, `npm run build`, `npm run e2e:manifest-check`를 실행했다.
+브라우저 복구 검사는 추적된 `canvas-metric-recovery.test.mjs`와 assertion이 동일한 로컬 사본으로
+실행했다. 변경은 helper import 경로와 증적 출력 Stage 6 → Stage 7 두 곳뿐이다. 과거 증적을
+덮어쓰지 않기 위한 경로 변경이며, `CHROME_CDP=http://localhost:19222`를 사용했다.
+이번에는 음성 대조를 재실행하지 않았다. Stage 6의 음성 대조는 해당 후보의 과거 증적으로 남긴다.
+renderer·Undo·Render Diff는 각각 추적된 E2E에 `--mode=headless`를 사용했다.
+직접 PDF는 `RHWP_RENDER_DIFF_DIRECT_PDF=1`, `..._GATE=1`, `..._MAX_RATIO=0.02`,
+`..._RASTER_DPI=144`, `RHWP_RENDER_DIFF_RHWP_BIN=<고정 target>/release-test/rhwp`로 실행했다.
+
+기존 경고는 별도로 남긴다. nextest 0.9.137/권고 0.9.140 및 미지원 JUnit 설정 경고,
+Vite의 CanvasKit `fs/path` 외부화·큰 chunk 경고가 있었다. PDF report-only 비교는 72 DPI
+크기 차이로 **4 warnings / 0 errors**였으며, 직접 PDF gate 3/3 통과와 혼동하지 않는다.
+이번 시간 수치는 단일 실행이며 빌드 또는 제품 성능의 인과 비교가 아니다.
+
+## 7. 통합 WASM·시각 증거·입력 동일성
+
+- WASM: **11,182,083 bytes**, SHA-256
+  `61465d69c436028b5f5c8db93297a92fb7283cb58450ce0525b5b342943c1b9a`.
+- 실제 Chrome `152.0.7977.83`이 HTTP 200으로 받은 WASM과 디스크 hash가 일치했다.
+  새 하이퍼링크 등 devel 변경이 포함돼 이전 WASM과 bytes가 다른 것이 정상이다.
+- 두 원본의 이모지 자연 진행폭은 18.302703857px, 활성 paint 배율은 1/1이다.
+  같은 세션에서 비활성 대조는 기존 가로 압축을 재현했고 페이지 수는 각각 2쪽이었다.
+- 통합본 `connected/{hwp,hwpx}-after.png`는 Stage 6의 각각 대응 PNG와 byte-identical하다.
+  네 파일 모두 SHA-256 `5a502fcd29d83ffa10e59ad7055b8835a03de4174bc7beaa3259e6eb6a2167f8`.
+  따라서 기존 시각 승인 화면이 보존됐다. 자동 비교를 새로운 인간 판정으로 쓰지 않는다.
+
+표준 시각 비교는 `scripts/visual_sweep.py`의 `make_compares`, `make_overlay_compares`,
+`make_review_panels`를 재사용했다. portable SVG 대신 실제 Canvas PNG 2쪽을 사용하고,
+기준 PDF 2쪽은 `pdftoppm -f 2 -l 2 -singlefile -r 96 -png`로 래스터화했다.
+기존과 같은 pixel threshold 32를 유지했다.
+
+- `output/7084/stage7/visual/{hwp,hwpx}/compare/compare_002.png`
+- `output/7084/stage7/visual/{hwp,hwpx}/overlay/overlay_002.png`
+- `output/7084/stage7/visual/{hwp,hwpx}/review/review_002.png`
+
+형식별 1쪽, 합계 2쪽을 비교했다. 구조 후보 탐지 전수 sweep을 실행한 것이 아니므로 자동 후보
+0건이라고 보고하지 않는다. 두 형식 모두 pixel match **90.78317%**, 내용 픽셀 중심 보조값
+**6.68869%**다. 대표 HWP review PNG를 직접 열어 한글 label·footer·수치가 판독 가능함을
+확인했다. 이모지는 좁게 눌리지 않지만, 표 간격·글꼴 및 컬러/흑백 모양 차이는 남아 있다.
+전체 fidelity 통과가 아니라 **#7084의 가로 압축 해소와 기존 승인 화면 유지**가 판정 범위다.
+
+코멘트: 내용 픽셀 중심 자동 일치율 보조값 = 약 6.69%.
+높을수록 좋음: 기준 PDF와 같은 위치·색의 내용 픽셀이 많다는 뜻이다.
+낮을수록 다름: 표 위치·줄 위치·글꼴 모양 차이도 함께 반영된다.
+단, 사람 판정 정확도가 아니라 픽셀 기반 보조값이며 이번 이모지 성공률이 아니다.
+
+실행 원본 HWP/HWPX 및 기준 PDF의 bytes를 `git show d3a189d5d:<경로>`와 대조해 네 파일 모두
+일치했다. 원본 SHA-256은 HWP `c8bae9677a6b4cdf6d7e79996523d7bbe04c31e61bdc8d04ef286d308ec74832`,
+HWPX `3999f78c928f709d9ac93b9efa03001168fe00935da78594242480f8816fcce4`다.
+PDF SHA-256은 §5를 따른다. 두 PDF 모두 PDF 1.6이며 SHA-1은 각각
+`b143b6154f036b37903801168ef56b6eba0c21f5`, `420f1785b2e70e7a2ce91a87b9e3f3160c60f8eb`다.
+
+## 8. 제출 준비 상태와 다음 승인 경계
+
+승인된 통합 및 로컬 검증을 완료했다. 병합 충돌 외 새 제품 보정은 없었고,
+검사·golden·래칫 허용치를 완화하지 않았다. source/test/PDF 입력은 `d3a189d5d`로 고정하고
+뒤따르는 결과 문서-only commit과 구별한다.
+
+PR 초안은 `output/7084/stage7/pr-body.md`에 준비한다. 제출 대상은 제품·테스트 원본,
+계획/단계/결과 문서, 기준 PDF 두 개와 쪽수 원장 신규 두 행이다.
+generated suite·manifest, pkg/WASM/dist, 로컬 폰트·접속정보·전체 output 증적은 제출하지 않는다.
+PR 번호는 예측하지 않는다. 별도 승인으로 Open PR을 만든 뒤 실제 번호에 맞춘 self-review와
+대표 PNG의 `mydocs/pr/assets/` 안정 파일명 보존·트리야지를 같은 PR에서 처리한다.
+1,000줄 초과 변경이므로 코드 review·시각 근거·CI와 작업지시자 판단을 건너뛰어 merge하지 않는다.
+
+원격 push·PR 생성·댓글·merge·close는 **미실행**이다. 다음 승인 요청은 원격 작업 branch
+push 및 base `devel`의 Open PR 생성이다. 기존 review worktree는 그 검증·self-review에 사용 중이다.
 
 ## 용어
 
