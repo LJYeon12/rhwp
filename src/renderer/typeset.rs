@@ -1157,7 +1157,7 @@ struct TypesetState {
     pending_body_wide_top_reserve: f64,
     /// visible text host 의 양수 offset 자리차지 표가 후속 문단을 밀어내는 구간.
     visible_float_exclusions: Vec<VisibleFloatExclusion>,
-    /// 현재 단에 실제 배치된 그림의 점유 영역. 단/쪽 전환에서 폐기한다.
+    /// 현재 쪽에 실제 배치된 그림의 점유 영역(용지 좌표). 다음 단에도 간섭할 수 있다.
     side_wrap_exclusions:
         std::collections::BTreeMap<(usize, usize), super::layout_frame::FrameExclusion>,
     inline_placements:
@@ -5316,7 +5316,6 @@ impl TypesetState {
     fn flush_column(&mut self) {
         // [#4090] 쪽이 끝나면 어울림 밴드도 끝난다 — 개체 높이를 used 에 반영한다.
         self.close_square_band();
-        self.side_wrap_exclusions.clear();
         self.inline_box_flow_bottom = 0.0;
         if self.current_items.is_empty()
             && self.current_column_wrap_around_paras.is_empty()
@@ -5410,7 +5409,6 @@ impl TypesetState {
 
     /// 비어있어도 flush
     fn flush_column_always(&mut self) {
-        self.side_wrap_exclusions.clear();
         self.inline_box_flow_bottom = 0.0;
         let col_content = ColumnContent {
             column_index: self.current_column,
@@ -5585,6 +5583,7 @@ impl TypesetState {
     }
 
     fn reset_for_new_page(&mut self) {
+        self.side_wrap_exclusions.clear();
         self.current_column = 0;
         self.current_height = 0.0;
         self.current_start_height = 0.0;
@@ -5824,7 +5823,23 @@ impl FormattedParagraph {
         ladder_dirty: bool,
         lazy_base: bool,
     ) -> f64 {
-        if col_count > 1 {
+        // [#6970] 다단에서도 **합성(reflow) lineseg 문단은 트림하지 않는다** — 아래
+        // `#2279 ①` 이 단단 경로에 건 가드와 같은 이유다. 트림은 "저장 ladder 가 spacing 을
+        // 이미 반영하고 vpos-snap 이 좌표를 복원한다"는 전제 위에 서는데, 합성 문단에는 그
+        // ladder 가 없어 트림분이 흐름에서 그냥 소실된다.
+        //
+        // 저장 `LINE_SEG` 가 없는 2단 문서에서 그 소실이 쌓여 단 채움 회계가 무너진다 —
+        // `synth_no_ls_square_wrap.hwp` 실측: 문단 151개에서 Σ 741.6px(문단당 6~10px)를
+        // 덜 세고, 단 0 은 `usedHeight 708.9 ≤ 가용 718.1` 로 "아직 남았다"고 판단해 계속
+        // 담는다. 실제로 담은 항목 합은 1000.4px 라 282px 초과이고, 넘친 내용이 다음 단으로
+        // 가지 않고 그 자리에 그려진다(off-canvas 20 · overflow 16).
+        //
+        // 다단에서 `height_for_fit` 을 쓰는 본래 이유(#391: trailing_ls 인플레이션이 단을
+        // 조기 종료시킨다)는 **저장 ladder 가 있는 문단**에 대한 것이므로 그대로 둔다.
+        let has_authoritative_seg_for_multicolumn = para.line_segs.iter().any(|seg| {
+            seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+        });
+        if col_count > 1 && has_authoritative_seg_for_multicolumn {
             return self.height_for_fit;
         }
         // [#2279 ①] spacing 트림은 **비합성(authoritative) 저장 lineseg** 문단에만.
@@ -8807,6 +8822,7 @@ impl TypesetEngine {
 
             let issue2424_branch_started = issue2424_ts_enabled.then(std::time::Instant::now);
             let mut native_hwp5_footnote_break = None;
+            let picture_host_origin = (st.pages.len(), st.current_column, st.current_height);
             if !has_table {
                 // --- 핵심: format → fits → place/split ---
                 let col_w = st
@@ -9343,7 +9359,15 @@ impl TypesetEngine {
                                 }
                             }
                             // [Task #1052] 글상자 내 각주 수집 (engine.rs:1376-1398 동등)
-                            st.register_side_wrap_picture(para_idx, ctrl_idx, para, None, styles);
+                            // NO_LS 호스트의 측정 원점만 전달한다. 저장 vpos 소유자는
+                            // 기존 저장 배치 경로에 남긴다.
+                            let host_top = (para.line_segs.is_empty()
+                                && (st.pages.len(), st.current_column)
+                                    == (picture_host_origin.0, picture_host_origin.1))
+                                .then_some(picture_host_origin.2);
+                            st.register_side_wrap_picture(
+                                para_idx, ctrl_idx, para, host_top, styles,
+                            );
                             if self.profile.get().hwp5_stored_pagination_layout()
                                 && !self.profile.get().session_edited()
                                 && st.current_items.iter().any(|item| {
