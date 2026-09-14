@@ -43,6 +43,7 @@ use crate::renderer::svg::SvgRenderer;
 use crate::renderer::DEFAULT_DPI;
 
 mod canvas_metrics;
+mod hyperlink;
 /// 어떤 렌더 export가 교체 가능한 경계 뒤에 있는지 선언하는 곳 (#4577, #4642).
 mod render_patch_boundary;
 mod template_automation;

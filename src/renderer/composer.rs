@@ -571,6 +571,81 @@ pub(crate) fn owned_rowbreak_tac_height(para: &Paragraph, control_index: usize) 
     (i64::from(seg.line_height) >= i64::from(table.common.height)).then_some(seg.line_height)
 }
 
+/// 저장된 서로 다른 물리 줄을 소유한 빈 carrier TAC 표의 흐름.
+/// top/end는 첫 저장 줄 원점 기준 HU이며, 테두리가 아닌 바깥여백 포함 pen이다.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StoredTacLine {
+    pub control: usize,
+    pub top: i32,
+    pub end: i32,
+    pub occupied_end: i32,
+}
+
+pub(crate) fn stored_tac_lines(para: &Paragraph) -> Option<Vec<StoredTacLine>> {
+    para.empty_control_stream_position(0)?;
+    if para.stored_text_partition_dirty
+        || para
+            .line_segs
+            .iter()
+            .any(|s| s.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0)
+    {
+        return None;
+    }
+    let origin = para.line_segs.first()?.vertical_pos;
+    let mut lines = Vec::new();
+    let mut previous_owner = None;
+    for (ci, control) in para.controls.iter().enumerate() {
+        let table = match control {
+            Control::Table(table) if table.common.treat_as_char => table,
+            Control::SectionDef(_)
+            | Control::ColumnDef(_)
+            | Control::Header(_)
+            | Control::Footer(_) => continue,
+            _ => return None,
+        };
+        let owner = control_line_seg_index(para, ci)?;
+        let seg = para.line_segs.get(owner)?;
+        let outer_height = i64::from(table.common.height)
+            + i64::from(table.outer_margin_top)
+            + i64::from(table.outer_margin_bottom);
+        // 여기서 높이가 같다는 것은 baseline 정렬된 객체의 전체 점유 줄을 뜻한다.
+        // 텍스트와 같은 줄, 더 큰 이웃 객체, 쪽 리셋은 기존 분할/재조판이 처리한다.
+        if previous_owner.is_some_and(|previous| previous >= owner)
+            || i64::from(seg.line_height) != outer_height
+            || seg.vertical_pos < origin
+        {
+            return None;
+        }
+        let top = seg.vertical_pos.checked_sub(origin)?;
+        if lines
+            .last()
+            .is_some_and(|line: &StoredTacLine| line.top >= top)
+        {
+            return None;
+        }
+        let occupied_end = top.checked_add(seg.line_height)?;
+        let end = occupied_end.checked_add(seg.line_spacing)?;
+        if end < top {
+            return None;
+        }
+        lines.push(StoredTacLine {
+            control: ci,
+            top,
+            occupied_end,
+            end,
+        });
+        previous_owner = Some(owner);
+    }
+    if lines.len() < 2 {
+        return None;
+    }
+    // 다음 표의 실제 소유 줄로 이동한다. 중간의 header/footer용 LineSeg는 표 줄이 아니다.
+    for i in 0..lines.len() - 1 {
+        lines[i].end = lines[i + 1].top;
+    }
+    Some(lines)
+}
+
 /// 캡션(문단 목록)의 총 높이를 px 로 계산한다.
 ///
 /// 렌더(`calculate_caption_height`)와 측정(`measure_caption`)이 각자 재구현하며 갈라졌던
