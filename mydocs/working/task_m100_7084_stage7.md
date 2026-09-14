@@ -76,6 +76,32 @@
 - **PR 준비 완료는 아니다.** 실제 충돌 해결 방침 승인과 통합본 검증이 남았다.
 - 제품 수정·실제 merge·원격 write는 하지 않았다. 문서 점검 결과만 로컬 커밋으로 보존한다.
 
+## 5. 승인 후 실행 — 통합 및 기준 PDF 보존
+
+해결 방침 승인 「네」 후 다시 fetch했다. devel은 `11860a9f4`로 동일했다.
+일반 merge `27b28af13`에서 위 3곳을 양쪽 보존으로 해결했다. 기존 review worktree를 같은
+commit으로 갱신했고, fmt 및 #7084 session 집중 11건이 통과했다.
+이후 전체 게이트는 기준 PDF 보존·쪽수 원장 추가를 포함한 후보로 실행한다.
+
+기존 `output/7084/oracle/` PDF 2개는 추적 중인 `pdf/`·`samples/` PDF와 크기/내용 hash를
+대조했으며 같은 bytes의 파일이 없었다. 재변환 없이 다음 경로에 복사한다.
+
+| 원본 (기존 Git 파일) | PDF 정식 경로 | PDF SHA-256 |
+| --- | --- | --- |
+| `samples/issue3587/c-form-labnote-001-stage11-filled.hwp` | `pdf/issue3587/c-form-labnote-001-stage11-filled-hwp-2020.pdf` | `ba1d5fbe6af800453143d8a7a16733339a25e3943764cb3d7f1e090fa820f83a` |
+| `samples/issue3587/c-form-labnote-001-stage11-filled.hwpx` | `pdf/issue3587/c-form-labnote-001-stage11-filled-hwpx-2020.pdf` | `0d4dadfd9523991c722bbbdeb83641c26426820beb80f139409a2c5488125b86` |
+
+PDF는 각 24,211/24,215 bytes, 2쪽, 595×841pt, Creator/Producer `Hancom PDF 1.3.0.550`이다.
+출처는 Stage 1의 MCP engine/profile 2020 변환이며 실제 서버 Hancom 버전은 **12.0.0.4605**였다.
+파일명 2020은 서비스 engine 선택을 뜻하며 실제 제품 버전을 11.x로 바꾸어 해석하지 않는다.
+원본 저장 제품은 HWP null, HWPX `hancom-office-2020`이며 기존 변환 선택을 유지한다.
+
+`regenerate.py`의 `rhwp_info`와 `pick_oracles`를 이번 두 입력에 한정해 호출했다.
+통합본 native CLI는 각각 2쪽·모아찍기 false였고, 형식별 위 PDF를 정확히 선택했다.
+독립 PDF의 2쪽을 기대값으로 기존 쪽수 원장에 **2/2 신규 행 두 개만** 추가한다.
+기존 행이나 허용치는 변경하지 않고 관련 원장 검사는 전체 integration에 포함해 재실행한다.
+두 원본은 새 sample이 아니며, 바이너리 입력은 변경하지 않았다.
+
 ## 용어
 
 - merge simulation: 작업 트리를 바꾸지 않고 두 commit의 병합 결과·충돌을 계산하는 검사.
