@@ -7,12 +7,12 @@ last_verified: 2026-09-14
 
 # PR #7113 메인터너 보정·후속 단계
 
-[개별 review](pr_7113_review.md)의 현재 판정은 **보류 사유 해소 — 원 PR의 부분 개선 범위 수용**다.
+[개별 review](pr_7113_review.md)의 현재 판정은 **메인터너 보정 후 수용 가능**이다. 원 head의 보류 사유는 명시한 통합 보정 코드에서 해소했다.
 
 ## 적용 이력
 
 - branch: `review/planet6897-20260914`
-- 기준: 최신 `upstream/devel` = local `devel` = `037e4906a93e99896daa145a5ee5517824bfeaf4`
+- rebase 당시 기준: `upstream/devel` = local `devel` = `037e4906a93e99896daa145a5ee5517824bfeaf4`
 - source: `13af3ecacd966792d0c04bbd66bfde2c32f34bdb` → rebase 후 `08381be17133451b24717968bc84247911fcc453` (`-x`·원 저자 유지)
 - 메인터너 보정: `30835faa1`
 - 최종 검증 코드: `2f59c89373f497068f9a0bcb2c22730ec7dc7e51`

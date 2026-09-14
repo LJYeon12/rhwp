@@ -7,7 +7,7 @@ last_verified: 2026-09-14
 
 # PR #7113 — 레거시 hwpeq TAB 수식 정규화 메인터너 검토
 
-**최종 판정: 보류 사유 해소 — 원 PR의 부분 개선 범위 수용.** F1의 정규화 재귀 stack overflow와 F2의 quoted literal 훼손을 메인터너 보정으로 해소했다.
+**최종 판정: 메인터너 보정 후 수용 가능.** 보류 사유는 아래에 명시한 통합 보정 코드의 부분 개선 범위에서 해소했다. F1의 정규화 재귀 stack overflow와 F2의 quoted literal 훼손을 메인터너 보정으로 해소했다.
 
 ## 대상·rebase·보정 이력
 
