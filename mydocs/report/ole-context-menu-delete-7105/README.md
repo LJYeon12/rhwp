@@ -1,6 +1,9 @@
 # #7105 메뉴 "지우기(D)" 로 OLE 개체 삭제 — 수정 전 / 수정 후
 
-재현 문서는 #7105 첨부 `실험4 Transistor-MOSFET.hwp`(11쪽)다. 신고자 첨부물이라 저장소에 넣지 않았다.
+재현 문서는 #7105 첨부 `실험4 Transistor-MOSFET.hwp`(11쪽)다. 현재 저장소에는 같은 원본이
+`tests/fixtures/issue_7105/transistor-mosfet.hwp`, 한컴 기준 PDF가
+`pdf/issue7105/transistor-mosfet-hancom2022.pdf`로 이미 포함되어 있다.
+2026-09-14 통합 검토는 이 기존 경로를 사용했으며 이름을 바꾼 중복 파일을 추가하지 않았다.
 
 ## 산출 방법
 
