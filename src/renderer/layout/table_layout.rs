@@ -8068,11 +8068,8 @@ impl LayoutEngine {
             // 정렬 오프셋과 담을 줄 수가 1줄분으로 굳어 뒤 문단이 셀 밖으로 밀려
             // 잘리거나 아예 렌더되지 않는다. 배치 쪽 first_seg_vpos_is_anchor 와
             // 같은 규약을 측정에도 적용한다.
-            let stored_flow_has_para_anchors = cell
-                .paragraphs
-                .iter()
-                .enumerate()
-                .all(|(idx, para)| crate::renderer::first_seg_vpos_is_anchor(para, idx));
+            let stored_flow_has_para_anchors =
+                crate::renderer::cell_vpos_ladder_is_intact(&cell.paragraphs);
             let stored_flow_shape_is_trusted = (depth > 0 || table.common.treat_as_char)
                 && stored_flow_extent > 0.0
                 && non_flow_object_extent <= stored_flow_extent + 0.5

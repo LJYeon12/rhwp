@@ -1462,10 +1462,21 @@ pub(crate) fn composed_line_tac_object_height_px(
 pub(crate) fn cell_vpos_ladder_is_intact(
     paragraphs: &[crate::model::paragraph::Paragraph],
 ) -> bool {
-    paragraphs
-        .iter()
-        .enumerate()
-        .all(|(idx, para)| first_seg_vpos_is_anchor(para, idx))
+    paragraphs.iter().enumerate().all(|(idx, para)| {
+        // 0 위치 자체는 유효하다. 텍스트가 전진하는 연속 줄의 위치가 모두 0이고
+        // 같은 줄의 가로 조각이나 page/column 전환이 아닐 때만 앵커 부재로 본다.
+        // 같은 text_start의 중복과 양수 위치에서 0으로 돌아오는 저장 리셋은 보존한다.
+        first_seg_vpos_is_anchor(para, idx)
+            && !para.line_segs.windows(2).enumerate().any(|(i, pair)| {
+                let (prev, seg) = (&pair[0], &pair[1]);
+                prev.vertical_pos == 0
+                    && seg.vertical_pos == 0
+                    && seg.text_start > prev.text_start
+                    && !seg.is_first_line_of_page()
+                    && !seg.is_first_line_of_column()
+                    && !height_measurer::stored_seg_is_row_fragment(para, i + 1)
+            })
+    })
 }
 
 /// [#2287] 저장 LINE_SEG 없는 빈 anchor 문단의 TAC(글자처럼) 그림/도형 플로우

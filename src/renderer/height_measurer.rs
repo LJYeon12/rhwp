@@ -3521,7 +3521,14 @@ impl HeightMeasurer {
                     .max()
                     .unwrap_or(0);
                 let pad = hwpunit_to_px(cell.stored_vertical_padding_hu(), self.dpi);
-                let floor = (hwpunit_to_px(content_hu as i32, self.dpi) + pad).min(row_heights[r]);
+                // 저장 위치가 줄들을 구분하지 못하면 이미 측정한 내용 높이를 지킨다.
+                // 한 줄짜리 extent를 쓰면 여러 줄이 꽉 찬 행까지 여유 공간으로 줄인다.
+                let floor = if crate::renderer::cell_vpos_ladder_is_intact(&cell.paragraphs) {
+                    hwpunit_to_px(content_hu as i32, self.dpi) + pad
+                } else {
+                    content_row_floor[r]
+                }
+                .min(row_heights[r]);
                 if floor > floors[r] {
                     floors[r] = floor;
                 }
