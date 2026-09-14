@@ -4603,8 +4603,18 @@ impl LayoutEngine {
             let runs_all_whitespace = comp_line.runs.iter().all(|r| r.text.trim().is_empty());
             // 정렬 폭은 실제 run 방출과 같은 TAC 귀속을 쓴다. 끝 위치 TAC를 빼면
             // 그림은 그리되 Center/Right 시작점이 그림 폭만큼 우측으로 밀린다 (#3257).
-            let line_tac_offsets_for_width =
+            let mut line_tac_offsets_for_width =
                 tac_offsets_for_line_width(composed, &tac_offsets_px, line_idx);
+            // 표의 그리기 전진 폭(#3396)과 정렬 폭을 맞춘다. 공통 flow_width_hu에
+            // 더하면 여백을 이미 합산하는 표 전용 문단 경로에서 중복 계산된다.
+            if let Some(para) = para {
+                for (_, width, ci) in &mut line_tac_offsets_for_width {
+                    if let Some(Control::Table(table)) = para.controls.get(*ci) {
+                        *width += hwpunit_to_px(table.outer_margin_left as i32, self.dpi)
+                            + hwpunit_to_px(table.outer_margin_right as i32, self.dpi);
+                    }
+                }
+            }
             let empty_tac_guide_line = comp_line.runs.is_empty() && !line_tac_offsets.is_empty();
             // LineSeg.line_height는 HWP에서 줄간격이 이미 반영된 값.
             // PARA_LINE_SEG가 없는 폴백(400 HWPUNIT=5.333px) 등 line_height가 폰트 크기보다 작으면,
@@ -4942,9 +4952,20 @@ impl LayoutEngine {
                             })
                         })
                 };
+            // 셀 안 TAC 줄의 저장 폭이 문단 오른쪽 여백만큼 좁으면 어울림 영역이
+            // 아니라 이미 여백을 뺀 폭이다. 이를 다시 열 폭으로 쓰면 아래에서
+            // 여백을 두 번 뺀다(issue_1285: 4px + 4px). 실제로 더 좁은 줄은 유지한다.
+            let inline_tac_segment_is_paragraph_width = cell_ctx.is_some()
+                && comp_line.column_start == 0
+                && styled_margin_left == 0.0
+                && margin_right > 0.0
+                && comp_line
+                    .segment_width
+                    .abs_diff(px_to_hwpunit(col_area.width - margin_right, self.dpi))
+                    <= 1;
             let uses_stored_segment_geometry = physical_frame_rows
                 || (has_picture_shape_square_wrap
-                    || line_has_inline_tac_table
+                    || (line_has_inline_tac_table && !inline_tac_segment_is_paragraph_width)
                     || precomputed_body_wrap_line
                     || empty_stored_wrap_line
                     || body_square_wrap_stored_line
