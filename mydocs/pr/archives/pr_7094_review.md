@@ -9,6 +9,26 @@ last_verified: 2026-09-14
 
 **최종 판정: 승인.** 이번 검토 범위에서 새 실행 회귀 또는 수용을 막는 코드 문제를 발견하지 않았다. 아래 잔여·미검증 범위는 승인 대상에 포함하지 않는다.
 
+
+## 통합 PR #7138 최종 CI 확인 (2026-09-14)
+
+[통합 PR #7138](https://github.com/edwardkim/rhwp/pull/7138)의 code candidate
+`a7898ff72a0b22e1e4071b682616a26dc82fd801`에서 원 PR 12건과 메인터너 보정을 함께 검증했다.
+아래 기존 조사 이력의 최초 누적 SHA와 현재 제출 SHA를 구분한다.
+
+- [Full CI, attempt 1](https://github.com/edwardkim/rhwp/actions/runs/34829125405): Build & Test, Rust lint, Native Skia, archive A/B/C/D, frontend package 성공.
+- [CodeQL](https://github.com/edwardkim/rhwp/actions/runs/34829125417): Rust/Python/JavaScript 분석 성공.
+- [Render Diff](https://github.com/edwardkim/rhwp/actions/runs/34829124987), [Adapter](https://github.com/edwardkim/rhwp/actions/runs/34829125311), [Proptest](https://github.com/edwardkim/rhwp/actions/runs/34829125263) 성공.
+- CI Impact Policy와 GHAS CodeQL 성공. 조회 시점 `MERGEABLE/CLEAN`; 병합 전에는 trailing head를 다시 확인한다.
+- CI의 base는 `042b02badf862ac7f8582b7615bcf9a3ac0b65df`다. 의존성 갱신이 포함된 최신 base와의 검증도 위 PR CI에서 성공했다.
+- 로컬 최종 renderer `2f59c89373f497068f9a0bcb2c22730ec7dc7e51`: 전체 nextest 9,854 통과/51 skipped, Native Skia·세 Clippy·WASM·OVR5 통과. Visual Sweep 도구 `321f4cdb4`: Python 50개/webfont 6개 통과.
+- WASM Sweep 5입력 14쪽 재캡처 및 178쪽 Native/WASM 텍스트·render tree 일치. 독립 한컴 PDF 전체 일치를 뜻하지 않는다. 로컬 Docker 최적화 WASM 빌드는 미검증이고 CI `WASM Build`도 skipped다.
+- #7104·#7113·#7115의 원 head blocker는 기록된 보정으로 해소했다. #6970의 기존 p2 그림 겹침 3행·단/쪽 소속, #7105의 eqalign/OLE 실제 편집 등 명시한 부분 이슈 잔여는 유지한다.
+- 이번 trailing commit은 review·오늘할일만 갱신한다. code candidate를 merge/rebase하지 않는다. 새 head의 CI 재사용과 required aggregate 통과, 작업지시자의 merge 승인 후 후속 처리한다.
+
+원 PR head `3ba97a74cde1cc927c31b5843be2bcf91de2b07d` → 현재 통합 이력의 cherry-pick `810b53149c3e78507febb8802ea9274695d2720b`. 원 저자와 `-x` 출처를 보존했다.
+
+
 ## 대상과 체리픽
 
 | 항목 | 확인값 |
@@ -167,10 +187,9 @@ module의 `RHWP`를 새 base/candidate 바이너리로, `git_head()`를 해당 �
 
 ## 다음 조건과 merge 후 contributor PR comment 계획
 
-이 PR 범위의 로컬 수용 판정이다. 같은 묶음 #7104·#7113·#7115의 보류가 해소되거나 승인된 별도 범위로 정리된 뒤 통합 PR을 준비한다.
+세 PR의 보류 사유를 메인터너 보정으로 해소했고 통합 PR #7138의 code candidate CI가 성공했다. 이 판정은 원 PR의 부분 개선 범위에 한한다.
 
-보정·범위 확정 후 최신 devel 정렬, 최신 code candidate Actions 통과, review·오늘할일 trailing 기록,
-최종 head Actions/mergeable 재확인과 작업지시자 merge 승인이 필요하다.
+이번 review·오늘할일 trailing 기록 뒤 최종 head Actions/mergeable 재확인과 작업지시자 merge 승인이 필요하다.
 원 source PR을 지금 close하거나 승인을 원격 게시하지 않는다.
 
 시각 근거를 사용한 PR은 [Visual Sweep 정본](../../manual/verification/visual_sweep_guide.md) direct link와

@@ -9,6 +9,26 @@ last_verified: 2026-09-14
 
 **최종 판정: 메인터너 보정 후 수용 가능.** 보류 사유는 아래에 명시한 통합 보정 코드의 부분 개선 범위에서 해소했다. F1의 추가 Square 그림·본문 교차를 메인터너 보정으로 해소했다. #6970 전체의 제목·본문 단/페이지 소속 차이는 기존 잔여로 남으며, 이 판정은 원 PR의 부분 개선 범위에 한한다.
 
+
+## 통합 PR #7138 최종 CI 확인 (2026-09-14)
+
+[통합 PR #7138](https://github.com/edwardkim/rhwp/pull/7138)의 code candidate
+`a7898ff72a0b22e1e4071b682616a26dc82fd801`에서 원 PR 12건과 메인터너 보정을 함께 검증했다.
+아래 기존 조사 이력의 최초 누적 SHA와 현재 제출 SHA를 구분한다.
+
+- [Full CI, attempt 1](https://github.com/edwardkim/rhwp/actions/runs/34829125405): Build & Test, Rust lint, Native Skia, archive A/B/C/D, frontend package 성공.
+- [CodeQL](https://github.com/edwardkim/rhwp/actions/runs/34829125417): Rust/Python/JavaScript 분석 성공.
+- [Render Diff](https://github.com/edwardkim/rhwp/actions/runs/34829124987), [Adapter](https://github.com/edwardkim/rhwp/actions/runs/34829125311), [Proptest](https://github.com/edwardkim/rhwp/actions/runs/34829125263) 성공.
+- CI Impact Policy와 GHAS CodeQL 성공. 조회 시점 `MERGEABLE/CLEAN`; 병합 전에는 trailing head를 다시 확인한다.
+- CI의 base는 `042b02badf862ac7f8582b7615bcf9a3ac0b65df`다. 의존성 갱신이 포함된 최신 base와의 검증도 위 PR CI에서 성공했다.
+- 로컬 최종 renderer `2f59c89373f497068f9a0bcb2c22730ec7dc7e51`: 전체 nextest 9,854 통과/51 skipped, Native Skia·세 Clippy·WASM·OVR5 통과. Visual Sweep 도구 `321f4cdb4`: Python 50개/webfont 6개 통과.
+- WASM Sweep 5입력 14쪽 재캡처 및 178쪽 Native/WASM 텍스트·render tree 일치. 독립 한컴 PDF 전체 일치를 뜻하지 않는다. 로컬 Docker 최적화 WASM 빌드는 미검증이고 CI `WASM Build`도 skipped다.
+- #7104·#7113·#7115의 원 head blocker는 기록된 보정으로 해소했다. #6970의 기존 p2 그림 겹침 3행·단/쪽 소속, #7105의 eqalign/OLE 실제 편집 등 명시한 부분 이슈 잔여는 유지한다.
+- 이번 trailing commit은 review·오늘할일만 갱신한다. code candidate를 merge/rebase하지 않는다. 새 head의 CI 재사용과 required aggregate 통과, 작업지시자의 merge 승인 후 후속 처리한다.
+
+원 PR head `add3a01b4a786da31663cc35746576495a96d357` → 현재 통합 이력의 cherry-pick `b9af4dc2377b27baa66e66d65f383a60dee6a2bd`. 원 저자와 `-x` 출처를 보존했다.
+
+
 ## 대상·rebase·보정 이력
 
 | 항목 | 확인값 |
@@ -167,3 +187,24 @@ venv/bin/python scripts/visual_sweep.py --wasm-pkg <새-WASM-web-package> --file
 
 생성 suite, 임시 SVG/JSON, 중간 로그, 인증 정보는 커밋하지 않는다.
 [보정·후속 단계](pr_7104_review_impl.md)에 다음 절차를 기록한다.
+
+## Merge 후 contributor PR comment 계획
+
+[Visual Sweep GitHub comment 정본](../../manual/verification/visual_sweep_guide.md#github-merge-comment)을 따른다.
+최종 WASM Sweep의 아래 수치와 앞 절의 직접 시각 판정·남은 차이를 함께 게시한다.
+flag 수는 해당 페이지의 자동 후보 유형 수이며 검출된 객체나 결함 개수가 아니다. 96dpi, 픽셀 차이 threshold 32의 결과다.
+
+| synth-no-lineseg 쪽 | 자동 flag 유형 수 | pixel_match | visual_accuracy_proxy_percent |
+| --- | --- | --- | --- |
+| 1 | 2 (square_wrap_text_overlap, large_ink_region_drift) | 82.89834% | 11.48821% |
+| 2 | 5 (square_wrap_text_overlap, column_text_flow_collapse, line_band_drift, column_line_band_drift, large_ink_region_drift) | 88.53523% | 6.03877% |
+| 3 | 0 (없음) | 90.98380% | 7.21664% |
+
+흰 여백을 포함한 pixel_match와 잉크 기반 proxy는 자동 비교 지표다. 기능 정확도 또는 전체 한컴 동등성 비율로 해석하지 않는다.
+메인터너 판정은 위 직접 비교의 구체적 줄·그림·구문 계약에 한하며, 원 PR의 부분 개선 범위와 기존 잔여를 함께 설명한다.
+대표 증적은 [비교 PNG](../assets/pr7104_maintainer_wasm_synth_p001.png)이며 게시할 raw URL 형식은
+`https://raw.githubusercontent.com/edwardkim/rhwp/<merge-commit-sha>/mydocs/pr/assets/pr7104_maintainer_wasm_synth_p001.png`다.
+
+통합 merge SHA 및 asset의 devel 반영을 확인한 뒤, 승인된 후속 처리에서 원 source SHA·보정 SHA·통합 PR과 merge SHA를 포함한
+UTF-8 Markdown 파일을 `--body-file`로 게시한다. API 재조회로 한글·본문·고정 이미지 링크를 확인한 뒤 원 PR을 close한다.
+현재는 계획이며 게시·병합·close 완료를 뜻하지 않는다. 부분 해결 이슈는 자동 close하지 않는다.

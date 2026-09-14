@@ -55,3 +55,11 @@ ShapeOle와 native Equation은 다른 control이다. 속성 조회·설정·수�
 form-002 golden을 공유하므로 중간 commit만 취소한 상태를 검증 결과로 재사용하지 않는다.
 
 [후속 처리 정본](../../manual/pr_review/post_merge.md)을 따른다.
+
+## PR #7138 code CI 완료 후 trailing 단계
+
+- 통합 code candidate `a7898ff72a0b22e1e4071b682616a26dc82fd801`의 Full CI·CodeQL·Render Diff·Adapter·Proptest·Policy 성공을 확인했다.
+- [개별 review](pr_7116_review.md)의 최신 절이 이전 조사 단계·SHA보다 우선한다. 원래 조사·검증 이력은 보존한다.
+- 원 PR별 review와 [오늘할일](../../orders/20260914.md)을 같은 통합 PR의 single-parent 문서 trailing commit으로 반영한다. 코드 변경·base merge/rebase는 하지 않는다.
+- push 전 최신 base/head merge-tree, 공백·문서 링크·기존 오늘할일 보존을 검사하고 push 뒤 exact trailing head의 required CI와 재사용 결과를 확인한다.
+- 병합·원 PR 댓글/close·이슈 잔여 확인·devel 동기화·duration refresh·소유 산출물 정리는 승인된 merge 이후 단계다.

@@ -35,7 +35,7 @@ last_verified: 2026-09-14
 | upstream/devel 동기화·rebase | 완료; 원 18 commit 재적용, 충돌 없음, 이전 branch 백업 보존 |
 | 세 보류 항목 보정 | #7104 그림 배제/빈 lane, #7113 재귀·quoted literal, #7115 마지막 가시 행 공백 |
 | 로컬 검증·Visual Sweep | 보류 사유 해소 — 원 PR의 부분 개선 범위 수용; 정확한 결과·입력·PNG는 개별 review에 기록 |
-| 통합 PR | 아직 생성하지 않음. 준비 확정 후 upstream 임시 head → devel; owner 자동 reviewer 요청 없음 |
+| 통합 PR | #7138 생성 완료; upstream `codex/planet6897-integration-20260914` → devel, owner 리뷰 요청 없음 |
 | CI·trailing 기록 | 통합 code candidate CI 후 review·오늘할일 trailing 절차 적용. 이번 로컬 검증을 원격 CI로 표기하지 않음 |
 | merge·원 PR/issue 후속 | 최종 SHA·CI·MERGEABLE/CLEAN 및 승인 범위 확인 후 수행. 부분 이슈를 완료로 닫지 않음 |
 | devel·정리 | merge 후 동기화하고 실행 중 Rust/Cargo가 없는지 확인한 뒤 소유한 review target만 정리 |
@@ -43,3 +43,11 @@ last_verified: 2026-09-14
 원 PR에 게시할 comment에는 반영 source SHA, 메인터너 보정, 통합 merge SHA, Visual Sweep 직접 링크와
 고정된 대표 PNG, 남은 이슈 범위를 포함한다. 현재 이 문서는 게시 완료 기록이 아니다.
 다른 작업의 변경을 reset/clean으로 버리지 않는다. [후속 처리 정본](../../manual/pr_review/post_merge.md)을 따른다.
+
+## PR #7138 code CI 완료 후 trailing 단계
+
+- 통합 code candidate `a7898ff72a0b22e1e4071b682616a26dc82fd801`의 Full CI·CodeQL·Render Diff·Adapter·Proptest·Policy 성공을 확인했다.
+- [개별 review](pr_7113_review.md)의 최신 절이 이전 조사 단계·SHA보다 우선한다. 원래 조사·검증 이력은 보존한다.
+- 원 PR별 review와 [오늘할일](../../orders/20260914.md)을 같은 통합 PR의 single-parent 문서 trailing commit으로 반영한다. 코드 변경·base merge/rebase는 하지 않는다.
+- push 전 최신 base/head merge-tree, 공백·문서 링크·기존 오늘할일 보존을 검사하고 push 뒤 exact trailing head의 required CI와 재사용 결과를 확인한다.
+- 병합·원 PR 댓글/close·이슈 잔여 확인·devel 동기화·duration refresh·소유 산출물 정리는 승인된 merge 이후 단계다.
