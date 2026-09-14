@@ -253,7 +253,7 @@ fn focused_cursor_local_geometry(
     char_offset: usize,
     styles: &ResolvedStyleSet,
 ) -> Option<FocusedCursorLocalGeometry> {
-    use crate::renderer::layout::{compute_char_positions, resolved_to_text_style};
+    use crate::renderer::layout::compute_char_positions;
 
     // Studio cell cursor offset과 이 native edit 경로의 char 인덱스가 일치하는 BMP 문단만
     // 대상으로 한다. 복합 인라인 컨트롤/강제 줄바꿈/탭은 page-tree exact 경로가 담당한다.
@@ -272,7 +272,7 @@ fn focused_cursor_local_geometry(
         return None;
     }
 
-    let composed = compose_paragraph(paragraph);
+    let composed = crate::renderer::composer::compose_paragraph_in_context(paragraph, styles);
     let line_index = composed
         .lines
         .iter()
@@ -314,7 +314,7 @@ fn focused_cursor_local_geometry(
             return None;
         }
         let run_len = run.text.chars().count();
-        let style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+        let style = run.text_style(styles);
         // Justify underflow의 음수 자간 보정은 line origin/spacing을 별도로 움직인다.
         // cached page run과 같은 위치임을 증명할 수 없으므로 보수적으로 제외한다.
         if alignment == Alignment::Justify && style.letter_spacing < -0.01 {

@@ -42,6 +42,8 @@ use crate::renderer::style_resolver::{
 use crate::renderer::svg::SvgRenderer;
 use crate::renderer::DEFAULT_DPI;
 
+mod canvas_metrics;
+mod hyperlink;
 /// 어떤 렌더 export가 교체 가능한 경계 뒤에 있는지 선언하는 곳 (#4577, #4642).
 mod render_patch_boundary;
 mod template_automation;
@@ -177,7 +179,7 @@ fn render_page_to_canvas_filtered_with_profile_impl(
     let profile = RenderProfile::parse(profile)
         .ok_or_else(|| JsValue::from_str(&format!("unsupported render profile: {profile}")))?;
     let tree = document
-        .build_page_layer_tree_with_profile(page_num, profile)
+        .build_canvas_page_layer_tree_with_profile(page_num, profile)
         .map_err(JsValue::from)?;
 
     let scale = normalize_canvas_scale(tree.page_width, tree.page_height, scale)
@@ -228,7 +230,7 @@ fn render_page_patch_to_canvas_filtered_with_profile_impl(
     let profile = RenderProfile::parse(profile)
         .ok_or_else(|| JsValue::from_str(&format!("unsupported render profile: {profile}")))?;
     let tree = document
-        .build_page_layer_tree_with_profile(page_num, profile)
+        .build_canvas_page_layer_tree_with_profile(page_num, profile)
         .map_err(JsValue::from)?;
     let scale = normalize_canvas_scale(tree.page_width, tree.page_height, scale)
         .map_err(JsValue::from_str)?;
@@ -810,7 +812,10 @@ impl HwpDocument {
         use crate::renderer::web_canvas::WebCanvasRenderer;
 
         let tree = self
-            .build_page_layer_tree(page_num)
+            .build_canvas_page_layer_tree_with_profile(
+                page_num,
+                crate::paint::RenderProfile::Screen,
+            )
             .map_err(JsValue::from)?;
 
         let scale = normalize_canvas_scale(tree.page_width, tree.page_height, scale)

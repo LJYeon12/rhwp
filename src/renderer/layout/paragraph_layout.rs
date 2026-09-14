@@ -80,7 +80,7 @@ fn terminal_tracking_after_inline_picture(
     if last.chars().any(char::is_whitespace) {
         return 0.0;
     }
-    let mut style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+    let mut style = run.text_style(styles);
     if style.letter_spacing <= 0.0 || style.kerning {
         return 0.0;
     }
@@ -188,7 +188,7 @@ fn horizontal_shaping_initial_lane_preflight(
     let Some(target) = final_line.target_runs.first() else {
         return false;
     };
-    let style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+    let style = run.text_style(styles);
     let scalar_count = run.text.chars().count();
     let instance_request = target.measurement.instance_request;
     let ratio_supported = if instance_request.is_some() {
@@ -629,7 +629,7 @@ fn numbering_marker_text_style(
     first_run: Option<&ComposedTextRun>,
 ) -> TextStyle {
     if let Some(run) = first_run {
-        resolved_to_text_style(styles, run.char_style_id, run.lang_index)
+        run.text_style(styles)
     } else {
         paragraph_active_text_style(styles, para, 0).0
     }
@@ -1058,7 +1058,7 @@ pub(crate) fn trailing_space_width_after_last_inline_object(
         if trailing_spaces == 0 {
             break;
         }
-        let ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+        let ts = run.text_style(styles);
         if stop_on_underline && ts.underline != crate::renderer::UnderlineType::None {
             break;
         }
@@ -1593,7 +1593,7 @@ pub(crate) fn right_tab_block_width(
         if let Some(_ov) = &r.char_overlap {
             let chars: Vec<char> = r.text.chars().collect();
             let fs = {
-                let ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                let ts = r.text_style(styles);
                 if ts.font_size > 0.0 {
                     ts.font_size
                 } else {
@@ -1603,7 +1603,7 @@ pub(crate) fn right_tab_block_width(
             w += fs * crate::renderer::composer::char_overlap_advance_units(&chars) as f64;
             continue;
         }
-        let mut ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+        let mut ts = r.text_style(styles);
         ts.default_tab_width = default_tab_width;
         ts.tab_stops = tab_stops.to_vec();
         ts.auto_tab_right = auto_tab_right;
@@ -1673,7 +1673,7 @@ fn converge_cell_overflow_char_spacing(
     for _ in 0..4 {
         let mut measured = 0.0f64;
         for run in &comp_line.runs {
-            let mut ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+            let mut ts = run.text_style(styles);
             ts.default_tab_width = tab_width;
             ts.extra_char_spacing = extra;
             measured += estimate_text_width(&run.text, &ts);
@@ -1718,8 +1718,7 @@ fn compute_line_extra_spacing(
                 if last_visible == '\t' || last_visible == '\u{FFFC}' {
                     return 0.0;
                 }
-                let mut with_spacing =
-                    resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                let mut with_spacing = run.text_style(styles);
                 with_spacing.default_tab_width = tab_width;
                 if with_spacing.letter_spacing >= 0.0 {
                     return 0.0;
@@ -1793,7 +1792,7 @@ fn compute_line_extra_spacing(
                     })
                 })
                 .map(|r| {
-                    let mut ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                    let mut ts = r.text_style(styles);
                     ts.default_tab_width = tab_width;
                     let natural = estimate_text_width("-", &ts);
                     (natural - natural.min(ts.font_size * 0.3)).max(0.0)
@@ -1801,8 +1800,7 @@ fn compute_line_extra_spacing(
                 .unwrap_or(0.0);
             let trailing_width = if trailing_spaces > 0 {
                 if let Some(last_run) = comp_line.runs.last() {
-                    let mut ts =
-                        resolved_to_text_style(styles, last_run.char_style_id, last_run.lang_index);
+                    let mut ts = last_run.text_style(styles);
                     ts.default_tab_width = tab_width;
                     estimate_text_width(&" ".repeat(trailing_spaces), &ts)
                 } else {
@@ -1850,8 +1848,7 @@ fn compute_line_extra_spacing(
             // 후행 공백 폭 계산
             let trailing_width = if trailing_spaces > 0 {
                 if let Some(last_run) = comp_line.runs.last() {
-                    let mut ts =
-                        resolved_to_text_style(styles, last_run.char_style_id, last_run.lang_index);
+                    let mut ts = last_run.text_style(styles);
                     ts.default_tab_width = tab_width;
                     let trailing_str: String = " ".repeat(trailing_spaces);
                     estimate_text_width(&trailing_str, &ts)
@@ -1921,8 +1918,7 @@ fn compute_line_extra_spacing(
                     let measure_with = |ecs: f64| -> f64 {
                         let mut measured = 0.0f64;
                         for r in &comp_line.runs {
-                            let mut ts =
-                                resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                            let mut ts = r.text_style(styles);
                             ts.default_tab_width = tab_width;
                             ts.extra_word_spacing = ews;
                             ts.extra_char_spacing = ecs;
@@ -1930,11 +1926,7 @@ fn compute_line_extra_spacing(
                         }
                         if trailing_spaces > 0 {
                             if let Some(last_run) = comp_line.runs.last() {
-                                let mut ts = resolved_to_text_style(
-                                    styles,
-                                    last_run.char_style_id,
-                                    last_run.lang_index,
-                                );
+                                let mut ts = last_run.text_style(styles);
                                 ts.default_tab_width = tab_width;
                                 ts.extra_word_spacing = ews;
                                 ts.extra_char_spacing = ecs;
@@ -2014,8 +2006,7 @@ fn compute_line_extra_spacing(
         } else {
             let trailing_width = if trailing_spaces > 0 {
                 if let Some(last_run) = comp_line.runs.last() {
-                    let mut ts =
-                        resolved_to_text_style(styles, last_run.char_style_id, last_run.lang_index);
+                    let mut ts = last_run.text_style(styles);
                     ts.default_tab_width = tab_width;
                     estimate_text_width(&" ".repeat(trailing_spaces), &ts)
                 } else {
@@ -2068,7 +2059,7 @@ fn compute_line_extra_spacing(
         && total_text_width < available_width
         && total_text_width > 0.0
         && comp_line.runs.iter().any(|r| {
-            let ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+            let ts = r.text_style(styles);
             ts.letter_spacing < -0.01
         })
         && {
@@ -2080,7 +2071,7 @@ fn compute_line_extra_spacing(
                 .runs
                 .iter()
                 .map(|r| {
-                    let mut ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                    let mut ts = r.text_style(styles);
                     ts.default_tab_width = tab_width;
                     ts.letter_spacing = 0.0;
                     estimate_text_width(&r.text, &ts)
@@ -2107,7 +2098,7 @@ fn compute_line_extra_spacing(
         for _ in 0..3 {
             let mut measured = 0.0f64;
             for r in &comp_line.runs {
-                let mut ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                let mut ts = r.text_style(styles);
                 ts.default_tab_width = tab_width;
                 ts.extra_char_spacing = extra;
                 measured += estimate_text_width(&r.text, &ts);
@@ -2275,6 +2266,35 @@ impl LayoutEngine {
         plan: &crate::renderer::inline_flow::InlineFlowPlan,
     ) {
         use crate::renderer::inline_flow::InlineFlowContent;
+        if let Some(rows) = &plan.text_rows {
+            let mut projected = para.clone();
+            projected.line_segs = rows.clone();
+            projected.hwpx_axis_shift = 0;
+            let composed =
+                crate::renderer::composer::compose_paragraph_in_context(&projected, styles);
+            self.layout_composed_paragraph_in_frame(
+                tree,
+                col_node,
+                &composed,
+                styles,
+                col_area,
+                col_area.y + plan.start,
+                0,
+                composed.lines.len(),
+                section_index,
+                para_index,
+                None,
+                true,
+                false,
+                0.0,
+                None,
+                Some(&projected),
+                Some(bin_data_content),
+                None,
+                true,
+            );
+            return;
+        }
         let chars: Vec<_> = para.text.chars().collect();
         for item in &plan.boxes {
             let x = col_area.x + item.x;
@@ -2481,6 +2501,10 @@ impl LayoutEngine {
         // 3. char_offsets 갭 분석으로 텍스트 세그먼트 분할
         // 확장 컨트롤은 8 UTF-16 코드 유닛을 차지
         let text_chars: Vec<char> = para.text.chars().collect();
+        let metric_scope = super::super::composer::supplemental_clusters::ParagraphMetricScope::new(
+            &text_chars,
+            styles,
+        );
         let offsets = &para.char_offsets;
 
         // 텍스트 세그먼트 분리: 갭이 8 이상이면 컨트롤 위치
@@ -2601,7 +2625,7 @@ impl LayoutEngine {
                         .unwrap_or(char_style_id);
                     let ch = map_pua_bullet_char(text_chars[ch_idx]);
                     let lang = super::super::style_resolver::detect_lang_category(ch);
-                    let ts = resolved_to_text_style(styles, cs_id, lang);
+                    let ts = metric_scope.style(styles, cs_id, lang, ch_idx);
                     total += estimate_text_width(&ch.to_string(), &ts);
                 }
                 total
@@ -2838,8 +2862,12 @@ impl LayoutEngine {
                                 let first_lang = super::super::style_resolver::detect_lang_category(
                                     text_chars[line_run_start],
                                 );
-                                let run_ts =
-                                    resolved_to_text_style(styles, current_cs_id, first_lang);
+                                let run_ts = metric_scope.style(
+                                    styles,
+                                    current_cs_id,
+                                    first_lang,
+                                    line_run_start,
+                                );
                                 let run_width = estimate_text_width(&run_text, &run_ts);
                                 let run_bbox_h = stored_line_baseline_at(line_run_start).unwrap_or(
                                     if wrapped_below_table {
@@ -2932,7 +2960,7 @@ impl LayoutEngine {
 
                         let ch = text_chars[ch_idx];
                         let lang = super::super::style_resolver::detect_lang_category(ch);
-                        let ts = resolved_to_text_style(styles, cs_id, lang);
+                        let ts = metric_scope.style(styles, cs_id, lang, ch_idx);
                         let ch_w = estimate_text_width(&ch.to_string(), &ts);
 
                         // char_shape 변경 또는 줄바꿈 시 누적된 run을 출력
@@ -2961,7 +2989,8 @@ impl LayoutEngine {
                         } else {
                             inline_x + ch_w > right_margin + 0.5 && inline_x > line_start_x + 1.0
                         };
-                        let cs_changed = cs_id != current_cs_id;
+                        let cs_changed = cs_id != current_cs_id
+                            || metric_scope.allows(ch_idx) != metric_scope.allows(line_run_start);
 
                         // 줄바꿈된 텍스트의 BoundingBox 높이: 표 줄 vs 텍스트 줄
                         let run_bbox_h = stored_line_baseline_at(line_run_start).unwrap_or(
@@ -2979,7 +3008,12 @@ impl LayoutEngine {
                             let first_lang = super::super::style_resolver::detect_lang_category(
                                 text_chars[line_run_start],
                             );
-                            let run_ts = resolved_to_text_style(styles, current_cs_id, first_lang);
+                            let run_ts = metric_scope.style(
+                                styles,
+                                current_cs_id,
+                                first_lang,
+                                line_run_start,
+                            );
                             let run_width = estimate_text_width(&run_text, &run_ts);
 
                             let run_id = tree.next_id();
@@ -3064,7 +3098,8 @@ impl LayoutEngine {
                         let first_lang = super::super::style_resolver::detect_lang_category(
                             text_chars[line_run_start],
                         );
-                        let run_ts = resolved_to_text_style(styles, current_cs_id, first_lang);
+                        let run_ts =
+                            metric_scope.style(styles, current_cs_id, first_lang, line_run_start);
                         let run_width = estimate_text_width(&run_text, &run_ts);
 
                         let run_id = tree.next_id();
@@ -3938,6 +3973,51 @@ impl LayoutEngine {
         bin_data_content: Option<&[BinDataContent]>,
         wrap_anchor: Option<&crate::renderer::pagination::WrapAnchorRef>,
     ) -> f64 {
+        self.layout_composed_paragraph_in_frame(
+            tree,
+            col_node,
+            composed,
+            styles,
+            col_area,
+            y_start,
+            start_line,
+            end_line,
+            section_index,
+            para_index,
+            cell_ctx,
+            suppress_column_top_vpos_fallback,
+            is_last_cell_para,
+            first_line_x_offset,
+            multi_col_width_hu,
+            para,
+            bin_data_content,
+            wrap_anchor,
+            false,
+        )
+    }
+
+    pub(crate) fn layout_composed_paragraph_in_frame(
+        &self,
+        tree: &mut PageLayoutContext,
+        col_node: &mut RenderNode,
+        composed: &ComposedParagraph,
+        styles: &ResolvedStyleSet,
+        col_area: &LayoutRect,
+        y_start: f64,
+        start_line: usize,
+        end_line: usize,
+        section_index: usize,
+        para_index: usize,
+        cell_ctx: Option<CellContext>,
+        suppress_column_top_vpos_fallback: bool,
+        is_last_cell_para: bool,
+        first_line_x_offset: f64,
+        multi_col_width_hu: Option<i32>,
+        para: Option<&Paragraph>,
+        bin_data_content: Option<&[BinDataContent]>,
+        wrap_anchor: Option<&crate::renderer::pagination::WrapAnchorRef>,
+        physical_frame_rows: bool,
+    ) -> f64 {
         let mut y = y_start;
         let end = end_line.min(composed.lines.len());
         // [#4968 R4D-1] 한 문단의 모든 최종 emitted run이 같은 registry
@@ -4452,6 +4532,11 @@ impl LayoutEngine {
                 y = base_y + hwpunit_to_px(seg.vertical_pos - base_vpos, self.dpi);
             }
 
+            if physical_frame_rows {
+                if let Some(row) = para.and_then(|p| p.line_segs.get(line_idx)) {
+                    y = y_start + spacing_before + hwpunit_to_px(row.vertical_pos, self.dpi);
+                }
+            }
             // 다단 필터링: segment_width가 현재 단 너비와 불일치하면 건너뜀
             if let Some(col_w) = multi_col_width_hu {
                 if comp_line.segment_width > 0 && (comp_line.segment_width - col_w).abs() > 200 {
@@ -4488,7 +4573,7 @@ impl LayoutEngine {
                 .runs
                 .iter()
                 .map(|r| {
-                    let ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                    let ts = r.text_style(styles);
                     if ts.font_size > 0.0 {
                         ts.font_size
                     } else {
@@ -4878,14 +4963,15 @@ impl LayoutEngine {
                     .segment_width
                     .abs_diff(px_to_hwpunit(col_area.width - margin_right, self.dpi))
                     <= 1;
-            let uses_stored_segment_geometry = (has_picture_shape_square_wrap
-                || (line_has_inline_tac_table && !inline_tac_segment_is_paragraph_width)
-                || precomputed_body_wrap_line
-                || empty_stored_wrap_line
-                || body_square_wrap_stored_line
-                || cell_square_wrap_stored_line)
-                && comp_line.segment_width > 0
-                && (line_avail_hu < col_area_w_hu - 200 || cs_significant);
+            let uses_stored_segment_geometry = physical_frame_rows
+                || (has_picture_shape_square_wrap
+                    || (line_has_inline_tac_table && !inline_tac_segment_is_paragraph_width)
+                    || precomputed_body_wrap_line
+                    || empty_stored_wrap_line
+                    || body_square_wrap_stored_line
+                    || cell_square_wrap_stored_line)
+                    && comp_line.segment_width > 0
+                    && (line_avail_hu < col_area_w_hu - 200 || cs_significant);
             let (effective_col_x, effective_col_w) = if uses_stored_segment_geometry {
                 let cs_px = hwpunit_to_px(comp_line.column_start, self.dpi);
                 let sw_px = hwpunit_to_px(comp_line.segment_width, self.dpi);
@@ -4934,23 +5020,23 @@ impl LayoutEngine {
             let stored_segment_line_box_cannot_hold_margins = uses_stored_segment_geometry
                 && !hwp3_password_stored_segment_line_box
                 && styled_margin_left + margin_right >= effective_col_w;
-            let (effective_margin_left, effective_margin_right) =
-                if hwp3_password_stored_segment_line_box
-                    || stored_segment_line_box_cannot_hold_margins
-                {
-                    (0.0, 0.0)
-                } else {
-                    (
-                        authoritative_stored_line_start_px(
-                            styled_margin_left,
-                            para.and_then(|p| p.line_segs.get(line_idx)),
-                            col_area_w_hu,
-                            self.dpi,
-                            hwp5_stored_line_start_eligible,
-                        ),
-                        margin_right,
-                    )
-                };
+            let (effective_margin_left, effective_margin_right) = if physical_frame_rows
+                || hwp3_password_stored_segment_line_box
+                || stored_segment_line_box_cannot_hold_margins
+            {
+                (0.0, 0.0)
+            } else {
+                (
+                    authoritative_stored_line_start_px(
+                        styled_margin_left,
+                        para.and_then(|p| p.line_segs.get(line_idx)),
+                        col_area_w_hu,
+                        self.dpi,
+                        hwp5_stored_line_start_eligible,
+                    ),
+                    margin_right,
+                )
+            };
 
             // [#5598] 내어쓰기가 줄 상자를 한 글자도 못 담을 만큼 먹으면 적용하지 않는다.
             //
@@ -5335,7 +5421,16 @@ impl LayoutEngine {
             if missing_tac_width > 0.0 && total_text_width < total_tac_width_in_line {
                 total_text_width += missing_tac_width;
             }
-            let is_last_line_of_para = line_idx == end - 1 && end == composed.lines.len();
+            // 빈 후속 lane은 같은 물리 행의 배제 영역을 표현할 뿐, 다음 글줄이 아니다.
+            // 마지막 가시 segment를 일반 문단 마지막 줄처럼 정렬한다.
+            let is_last_line_of_para = end == composed.lines.len()
+                && (line_idx == end - 1
+                    || (physical_frame_rows
+                        && para.is_some_and(|p| {
+                            p.line_segs[line_idx + 1..end]
+                                .iter()
+                                .all(|s| s.tag & LineSeg::TAG_EMPTY_SEGMENT != 0)
+                        })));
 
             // 정렬별 간격 분배 계산
             let has_forced_break = comp_line.has_line_break;
@@ -5472,7 +5567,7 @@ impl LayoutEngine {
                     .runs
                     .iter()
                     .map(|r| {
-                        let mut ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                        let mut ts = r.text_style(styles);
                         ts.default_tab_width = tab_width;
                         ts.tab_stops = tab_stops.clone();
                         ts.auto_tab_right = auto_tab_right;
@@ -5540,8 +5635,12 @@ impl LayoutEngine {
             // line_tac_offsets_for_width 비어 있을 때 한정. ④ 전부 공백인
             // 줄(밑줄 친 서명란)과 밑줄 스타일 말미 공백은 보이는 콘텐츠라
             // 유지(issue_157 직선 골든 — 제외하면 우측 클립까지 이탈).
+            // [#7081] `cell_ctx.is_none()` 을 뺀다 — 칸 예외의 근거였던 `issue_1285` 는
+            // **TAC 개체가 우단을 잡는 줄**이고, 그 형상은 바로 아래
+            // `line_tac_offsets_for_width.is_empty()` 가 이미 거른다. 순수 텍스트 줄에서는
+            // 한/글도 칸 안에서 말미 공백을 빼고 정렬한다(3079571 취소신청서 1쪽,
+            // '신청하는' + 공백 5칸 — 한/글 대비 -15.02px = 5 × 6.008 ÷ 2).
             let center_excludes_trailing_ws = alignment == Alignment::Center
-                && cell_ctx.is_none()
                 && is_last_line_of_para
                 && line_tac_offsets_for_width.is_empty()
                 && comp_line
@@ -5551,10 +5650,24 @@ impl LayoutEngine {
             // [#5820] 글상자(drawText) 안 문단은 표 셀이 아니다 — 한글은 글상자
             // 안에서도 오른쪽 정렬의 말미 공백을 제외한다(156560092 글상자:
             // [로고A][로고B][공백5] RIGHT 문단 — 한글 로고 우변 여백 4.1px,
-            // 포함 시 공백 폭 32.7px 만큼 좌측 이탈). 셀 내부 포함-정렬 계약
-            // (issue_1285)은 in_textbox=false 로 그대로 유지된다.
-            let right_align_excludes_trailing_ws =
-                alignment == Alignment::Right && cell_ctx.as_ref().is_none_or(|c| c.in_textbox);
+            // 포함 시 공백 폭 32.7px 만큼 좌측 이탈).
+            //
+            // [#7081] 칸 예외를 **형상**으로 좁힌다. `issue_1285` 의 근거는 "셀 내부"가
+            // 아니라 **TAC 개체가 우단을 잡는 줄**이다(수험번호 TAC 우단 = 셀 inner 우단).
+            // 순수 텍스트 줄에서는 한/글도 칸 안에서 말미 공백을 빼고 정렬한다.
+            //
+            //   3030681 이의신청서 1쪽  '신청인(대표자)' + 공백 15칸, 칸 안 RIGHT
+            //     한/글 가시 텍스트 끝 404.8 · rhwp 307.1 + 공백 97.5 = 404.6
+            //     -> 글자가 통째로 97.56px(= 6.504 × 15) 좌측 이탈. 같은 쪽 219자의
+            //        세로 편차는 0.09px 로, 어긋난 것은 이 한 줄의 가로뿐이다.
+            //   3079571 취소신청서 1쪽  '신청하는' + 공백 5칸, 칸 안 CENTER
+            //     -15.02px = 5 × 6.008 ÷ 2 — 가운데 정렬이라 절반만 밀린다.
+            //
+            // Center 쪽은 이미 같은 가드(`line_tac_offsets_for_width.is_empty()`)를 갖고
+            // 있고, Right 에만 없었다. 두 정렬의 조건을 같은 형상으로 맞춘다.
+            let right_align_excludes_trailing_ws = alignment == Alignment::Right
+                && (cell_ctx.as_ref().is_none_or(|c| c.in_textbox)
+                    || line_tac_offsets_for_width.is_empty());
             let trailing_ws_width =
                 if right_align_excludes_trailing_ws || center_excludes_trailing_ws {
                     trailing_space_width_after_last_inline_object(
@@ -6426,8 +6539,7 @@ impl LayoutEngine {
             for (smi, (spos, stext)) in shape_markers.iter().enumerate() {
                 if !shape_marker_inserted[smi] && *spos <= run_char_pos {
                     shape_marker_inserted[smi] = true;
-                    let base_style =
-                        resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                    let base_style = run.text_style(styles);
                     let mut ms = base_style;
                     ms.color = 0x0000FF; // BGR: 빨간색
                     ms.font_size *= 0.55;
@@ -6461,7 +6573,7 @@ impl LayoutEngine {
                     x += mw;
                 }
             }
-            let mut text_style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+            let mut text_style = run.text_style(styles);
             text_style.default_tab_width = tab_width;
             text_style.tab_stops = tab_stops.to_vec();
             text_style.auto_tab_right = auto_tab_right;
@@ -7991,7 +8103,7 @@ impl LayoutEngine {
 
                 let base_run = comp_line.runs.last().or(comp_line.runs.first());
                 let base_style = if let Some(run) = base_run {
-                    resolved_to_text_style(styles, run.char_style_id, run.lang_index)
+                    run.text_style(styles)
                 } else {
                     resolved_to_text_style(styles, 0, 0)
                 };
@@ -8274,7 +8386,7 @@ impl LayoutEngine {
                     if char_pos >= line_char_start && char_pos <= line_char_end {
                         let base_run = comp_line.runs.last().or(comp_line.runs.first());
                         let bm_base_style = if let Some(run) = base_run {
-                            resolved_to_text_style(styles, run.char_style_id, run.lang_index)
+                            run.text_style(styles)
                         } else {
                             resolved_to_text_style(styles, 0, 0)
                         };
@@ -8392,7 +8504,7 @@ impl LayoutEngine {
                 run.text.chars().count()
             };
             let run_char_end_est = run_char_pos_est + run_char_count_est;
-            let mut ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+            let mut ts = run.text_style(styles);
             ts.default_tab_width = tab_width;
             ts.tab_stops = tab_stops.to_vec();
             ts.auto_tab_right = auto_tab_right;

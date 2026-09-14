@@ -2824,7 +2824,9 @@ pub(crate) fn control_line_seg_index(para: &Paragraph, control_index: usize) -> 
     let positions = para.control_text_positions();
     let p = *positions.get(control_index)?;
     if para.text.is_empty() && para.char_offsets.is_empty() {
-        let stream_pos = p.saturating_mul(8);
+        let stream_pos = para
+            .empty_control_stream_position(control_index)
+            .map_or_else(|| p.saturating_mul(8), |pos| pos as usize);
         // [#5961] `stream_pos` 는 컨트롤당 8유닛인 HWP5 축이므로 `text_start` 도 올린다.
         return para
             .line_segs
@@ -3133,6 +3135,7 @@ pub(crate) use text_measurement::{
 // (tests/cases/issue_6060_cjk_quote_paint_measure_parity.rs) 에서 측정-페인트 정합을
 // 직접 검증한다 — pub 노출.
 pub use text_measurement::forces_halfwidth_cjk_quote;
+pub use text_measurement::{EmbeddedTextMeasurer, TextMeasurer};
 // [Task #826] map_pua_bullet_char 는 통합 테스트 (tests/issue_826.rs) 에서 직접 검증
 // (PUA substitution 매핑 정합) — pub 노출.
 pub(crate) use border_rendering::{
@@ -4347,7 +4350,7 @@ impl LayoutEngine {
                 }
             } else if has_picture {
                 // Picture 컨트롤이 있는 문단
-                let comp = self.compose_header_footer_paragraph(para, page_number);
+                let comp = self.compose_header_footer_paragraph(para, page_number, styles);
                 if comp.tac_controls.is_empty() {
                     // 머리말/꼬리말 내 Picture: header/footer area 기준 배치
                     for (ci, ctrl) in para.controls.iter().enumerate() {
@@ -4424,7 +4427,7 @@ impl LayoutEngine {
                     .any(|c| matches!(c, Control::Shape(s) if s.common().treat_as_char));
                 let hf_shape_section = usize::MAX;
                 if has_tac_shape {
-                    let comp = self.compose_header_footer_paragraph(para, page_number);
+                    let comp = self.compose_header_footer_paragraph(para, page_number, styles);
                     self.layout_paragraph(
                         tree,
                         area_node,
@@ -4464,7 +4467,7 @@ impl LayoutEngine {
                 }
                 // 텍스트도 함께 렌더링 (TAC 도형 경로는 위에서 이미 문단을 레이아웃함)
                 if !has_tac_shape && !para.text.is_empty() {
-                    let comp = self.compose_header_footer_paragraph(para, page_number);
+                    let comp = self.compose_header_footer_paragraph(para, page_number, styles);
                     y_offset = self.layout_paragraph(
                         tree,
                         area_node,
@@ -4482,7 +4485,7 @@ impl LayoutEngine {
                 }
             } else {
                 // 일반 텍스트 문단 레이아웃 (필드 마커 치환 포함)
-                let comp = self.compose_header_footer_paragraph(para, page_number);
+                let comp = self.compose_header_footer_paragraph(para, page_number, styles);
                 y_offset = self.layout_paragraph(
                     tree,
                     area_node,
@@ -4508,8 +4511,9 @@ impl LayoutEngine {
         &self,
         para: &Paragraph,
         page_number: u32,
+        styles: &ResolvedStyleSet,
     ) -> ComposedParagraph {
-        let mut comp = compose_paragraph(para);
+        let mut comp = crate::renderer::composer::compose_paragraph_in_context(para, styles);
         self.substitute_hf_field_markers(&mut comp, page_number);
         if para.controls.iter().any(|ctrl| {
             matches!(ctrl, Control::AutoNumber(an)
@@ -5357,7 +5361,8 @@ impl LayoutEngine {
                         }
                     } else if !para.text.is_empty() {
                         // 컨트롤 없는 텍스트 문단: vpos 기반 y 위치 사용
-                        let mut comp = compose_paragraph(para);
+                        let mut comp =
+                            crate::renderer::composer::compose_paragraph_in_context(para, styles);
                         self.substitute_hf_field_markers(&mut comp, page_number);
                         // 바탕쪽 탭은 레이아웃 위치 지정용이므로 탭 리더를 그리지 않음
                         comp.tab_extended.clear();
@@ -10269,6 +10274,7 @@ impl LayoutEngine {
                 None
             };
             let tbl_inline_x = flow_placement
+                .filter(|placement| placement.advance_end.is_none())
                 .map(|placement| {
                     col_area.x + placement.x + hwpunit_to_px(t.outer_margin_left as i32, self.dpi)
                 })
@@ -11055,6 +11061,16 @@ impl LayoutEngine {
                     para_y_for_table, table_y_before,
                 );
             }
+            // 저장 줄 계획의 pen/advance는 typeset과 동일하다. 표 하단에서 gap을
+            // 다시 추측하거나 위아래 여백을 후가산하지 않는다.
+            if let Some(end) = flow_placement.and_then(|placement| placement.advance_end) {
+                return TableControlOut {
+                    y_offset: col_area.y + end,
+                    tac_seg_applied: true,
+                    para_float_lane_info,
+                    early_return: Some((col_area.y + end, true)),
+                };
+            }
             // ── TAC 표: 줄간격 처리 ──
             // layout_table 반환값(표 하단)에 line_spacing을 더하여 다음 표 시작 y 결정
             if is_tac {
@@ -11095,7 +11111,9 @@ impl LayoutEngine {
                     if let (Some(seg), Some(next_seg)) =
                         (para.line_segs.get(seg_idx), para.line_segs.get(seg_idx + 1))
                     {
-                        let gap = next_seg.vertical_pos - (seg.vertical_pos + seg.line_height);
+                        let gap = next_seg
+                            .vertical_pos
+                            .saturating_sub(seg.vertical_pos.saturating_add(seg.line_height));
                         y_offset += hwpunit_to_px(gap, self.dpi);
                     }
                     return TableControlOut {
@@ -14468,7 +14486,7 @@ impl LayoutEngine {
                 .runs
                 .iter()
                 .map(|r| {
-                    let ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                    let ts = r.text_style(styles);
                     if ts.font_size > 0.0 {
                         ts.font_size
                     } else {
@@ -14568,7 +14586,7 @@ impl LayoutEngine {
         let mut tac_pos = 0usize;
 
         'outer: for run in &first_line.runs {
-            let mut ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+            let mut ts = run.text_style(styles);
             ts.default_tab_width = tab_width;
             ts.tab_stops = tab_stops.clone();
             ts.auto_tab_right = auto_tab_right;
@@ -14717,7 +14735,7 @@ fn compute_tac_leading_width(
     let mut width = 0.0;
     for run in &first_line.runs {
         let run_len = run.text.chars().count();
-        let style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+        let style = run.text_style(styles);
         // [Task #555] PUA 옛한글 변환 후 폰트 매트릭스는 자모 시퀀스 기준.
         let effective_full = effective_text_for_metrics(run);
         match tac_pos_opt {

@@ -257,6 +257,7 @@ impl DocumentCore {
             document,
             pagination: Vec::new(),
             styles,
+            canvas_metrics: None,
             composed: Vec::new(),
             render_normalization: super::super::RenderNormalizationState::default(),
             dpi: DEFAULT_DPI,
@@ -1559,6 +1560,7 @@ impl DocumentCore {
         let sec_count = document.sections.len();
 
         self.document = document;
+        self.canvas_metrics = None;
         self.render_normalization.text_reflowed_tables.clear();
         self.bump_bin_data_epoch();
         self.rebuild_resolved_styles();
@@ -2053,6 +2055,7 @@ impl DocumentCore {
     /// 측정값**을 재사용했다.
     pub fn set_document(&mut self, doc: Document) {
         self.document = doc;
+        self.canvas_metrics = None;
         self.render_normalization.text_reflowed_tables.clear();
         self.bump_bin_data_epoch();
         self.rebuild_derived_state();

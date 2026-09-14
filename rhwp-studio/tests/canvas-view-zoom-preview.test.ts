@@ -62,6 +62,8 @@ function fixture(arrangement: PageArrangement, direction: 'vertical' | 'horizont
     originalDimensions(...args);
   };
   Object.assign(view, {
+    // Zoom-only fixture: metric preparation leaves the layout unchanged.
+    wasm: { prepareCanvasMetrics: async () => false },
     virtualScroll, pages, scrollContent, pageArrangement: arrangement,
     pageMovement: { direction, wheelHorizontal: false },
     viewportManager: {

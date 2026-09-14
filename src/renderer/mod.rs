@@ -9,6 +9,7 @@ use crate::model::control::Control;
 use crate::model::style::{LineSpacingType, UnderlineType};
 
 pub mod canvas;
+pub mod canvas_text_font;
 pub mod canvaskit_policy;
 pub mod composer;
 pub mod equation;
@@ -23,6 +24,7 @@ pub(crate) mod font_rule_layout_metric_projection;
 #[path = "font_rule_projections/layout_name.rs"]
 pub(crate) mod font_rule_layout_name_projection;
 pub(crate) mod form_caption;
+pub mod hyperlinks;
 // [gym_gpu_raster] GPU 가속 SVG 래스터화(vello/wgpu). 네이티브 + gpu feature 전용 —
 // native-skia 와 같은 방식으로 선택적 게이팅해 CI는 GPU 없이도 컴파일된다.
 #[cfg(all(not(target_arch = "wasm32"), feature = "gpu"))]
@@ -64,6 +66,7 @@ pub(crate) mod shaping_vertical;
 pub mod skia;
 pub(crate) mod static_svg;
 pub mod style_resolver;
+pub mod supplemental_metrics;
 pub mod svg;
 pub mod svg_fragment;
 pub mod svg_layer;
@@ -185,6 +188,10 @@ pub(crate) fn replay_positions_or_compute<'a>(
 /// 텍스트 렌더링 스타일
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TextStyle {
+    /// Session-only glyph metrics; never part of document/style serialization.
+    #[serde(skip)]
+    pub supplemental_metrics:
+        Option<std::sync::Arc<supplemental_metrics::SupplementalMetricSnapshot>>,
     /// 글꼴 이름
     pub font_family: String,
     /// 글꼴 크기 (px)
@@ -275,6 +282,12 @@ pub struct TextStyle {
     pub strike_color: ColorRef,
     /// 음영 색 (형광펜, 0xFFFFFF = 없음)
     pub shade_color: ColorRef,
+    /// [#7092] 이 run 의 메트릭 표를 그 글꼴 자신의 폭으로 믿을 수 있는지
+    /// (TTF 선언 · 대체 없음). 모르면 거짓 — 종전의 보수적 측정을 따른다.
+    ///
+    /// 측정 결정에만 쓴다 — 레이어 트리 직렬화 바이트를 보존하려고 직렬화에서 뺀다.
+    #[serde(skip_serializing)]
+    pub font_metric_trusted: bool,
 }
 
 /// 위첨자/아래첨자 글리프를 그릴 때 적용하는 본문 대비 글꼴 크기 배율.
@@ -399,6 +412,7 @@ pub(crate) fn canvas_cluster_fit_scale(
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
+            supplemental_metrics: None,
             font_family: String::new(),
             font_size: 0.0,
             color: 0,
@@ -436,6 +450,7 @@ impl Default for TextStyle {
             underline_color: 0,
             strike_color: 0,
             shade_color: 0x00FFFFFF,
+            font_metric_trusted: false,
         }
     }
 }
@@ -1909,7 +1924,7 @@ pub fn render_font_family_chain_for_weight(font_family: &str, bold: bool) -> Str
 ///
 /// [#3314] Canvas API가 요구하는 인용 형식을 유지하면서, 굵기 접미사 face
 /// 바로 뒤에 base family를 넣어 generic 폴백보다 먼저 선택되게 한다.
-/// 측정 경로에는 사용하지 않는다.
+/// 정적 DB 조회의 family key와는 다르다. Canvas 실측은 paint와 이 체인을 공유한다.
 pub fn canvas_font_family_chain(font_family: &str) -> String {
     let requested = internal_font_family_members(font_family);
     let Some(primary) = requested.first().copied() else {

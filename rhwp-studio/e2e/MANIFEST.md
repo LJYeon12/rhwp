@@ -21,6 +21,7 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `bridge-lifecycle.test.mjs` | 상시 | active | Studio Bridge — 부모 페이지에서 createStudio 로 chrome·커맨드·hwpctrl 제어와 destroy 회수 | table-001.hwp | npm e2e:bridge |  |
 | `bridge-perf.test.mjs` | 상시 | active | 브리지 성능 게이트 — 배치 RPC 1왕복·배치 이득·undo 1스텝·수명 잔여 (계획서 §6) | table-001.hwp | npm e2e:bridge-perf |  |
 | `canvas-render-diff.test.mjs` | 상시 | active | Browser canvas visual diff between the legacy PageRenderTree path  | — | npm+CI |  |
+| `canvas-metric-recovery.test.mjs` | 상시 | active | #7084 실제 CanvasView descriptor 오류의 1회 자동 복구·지속 오류 제한·오래된 view 거부·일반 오류 분리 | issue3587/c-form-labnote-001-stage11-filled.hwp/.hwpx | npm e2e:canvas-metric-recovery | 통제 오류 주입, 자연 발생 폰트 장애와 구분 |
 | `canvaskit-font-coverage.test.mjs` | 상시 | active | CanvasKit 번들 폰트와 exact TTC GlyphRun 등록/픽셀 replay 검증 | — | npm+CI |  |
 | `chart-data-structure-issue6053.test.mjs` | 상시 | active | #6053 차트 행·열·라벨 구조 편집 UI — 우클릭 행 추가·저장본 반영·Ctrl+Z 원복·무편집 무흔적·ESC 는 메뉴만 닫음·종류별 사전 판정(원형 안내/주식형 캔들 양끝 비활성) | chart/세로막대형/묶은세로막대형.hwp, chart/원형/2차원원형.hwp, chart/기타/시가고가저가종가.hwp | npm e2e:issue-6053 | dev server 필요 — run-with-vite.mjs 경유 |
 | `cell-enter-pagination-issue4031.test.mjs` | 상시 | active | Issue #4031 — pending 중 셀 Enter의 pre-navigation full flush 0회·split 1회·barrier 대조군 계약 | issue1949_giant_cell_nested_tables_perf.hwp/.hwpx | npm e2e:issue-4031-cell-enter |  |
@@ -96,6 +97,7 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `pdf-render-diff-report.mjs` | 상시 | active | Report-only visual diff between browser Canvas output and SVG-deri | — | npm+CI | legacy-name |
 | `plugin-lifecycle.test.mjs` | 상시 | active | 플러그인 호스트 — allowlist·트랜잭션 1스냅샷·롤백·unload 회수 | — | npm e2e:plugin-lifecycle |  |
 | `print-pdf-issue3126.test.mjs` | 상시 | active | #3126 same-origin iframe 인쇄/PDF UX, 상태 불변, #2524/#2525 browser PDF 회귀 | render-p35-font-native-bitmap.hwpx, hwpx/hwpx-02.hwpx | 수동 | native dialog는 Chrome/Edge 수동 절차 병행 |
+| `hyperlink-pdf-issue6963.test.mjs` | 상시 | active | #6963 링크 dialog, HWP/HWPX 저장·재열기, Chromium PDF URI·영역 및 뷰어 클릭 | 새 문서, basic/Textmail.hwp, hwpx_sample2.hwpx | 수동 | full Chrome headless, PYTHON의 pypdf 필요; native picker/print만 캡처 |
 | `probe-image-repaint-issue3315.mjs` | 진단 | active | Issue #3315 Track 4 종결 측정 — 그림 1장 문서의 타이핑·`document-changed`·개체 이동 비용을 그림 없음과 대조 (#2520 프로브 형식, 브리지 메서드별 내역 포함) | images/tiger01.jpg | npm e2e:issue-3315-perf | 시간 수치는 비-CI 진단 |
 | `probe-input-perf-issue3137.mjs` | 진단 | active | Issue #3137 거대 표 셀 입력의 mutation·cursor update·focused repaint·operation·2-rAF·long task 성능 매트릭스 | issue1949_giant_cell_nested_tables_perf.hwp/.hwpx | npm e2e:issue-3137-perf | 시간 수치는 비-CI, 문서·cursor·focused repaint·flush 계약만 hard assertion |
 | `pr2260-vscode-zoom-menu.test.mjs` | 상시 | active | [PR #2260 검증] rhwp-vscode 배율 메뉴 — 호스트 Chrome CDP 로 webview 하네스 구동. | — | 수동 |  |
@@ -145,3 +147,5 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `unsupported-format-error.test.mjs` | 상시 | active | 미지원 문서 오류 알림 후 정상 문서 재로드 | field-01.hwp | 수동 |  |
 | `zoom-fit-mode-persistence.test.mjs` | 상시 | active | 쪽 맞춤/폭 맞춤 선택 저장과 문서 로드 시 복원 — 새 문서 쪽 크기로 재계산, 수치 배율은 맞춤 해제 | 2010-01-06.hwp · 253E164F57A1BC6934-empty.hwp | npm e2e:zoom-fit-mode |  |
 | `zoom-dialog-transaction.test.mjs` | 상시 | active | #6109 사용자 배율 오류·ARIA·Enter/Escape/취소와 배치+이동+배율 단일 transaction — 최종 상태 `recalcLayout()` 1회 | — | npm e2e:zoom-dialog-transaction | dev server 필요 — run-with-vite.mjs 경유 |
+
+| `hyperlink-ui-issue6963.test.mjs` | 상시 | active | #6963 한컴형 링크 UI·우클릭·방문 색·undo/redo·드래그 선택 | 새 문서 | 수동 | 실제 WASM 필요 |

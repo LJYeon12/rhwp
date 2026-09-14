@@ -122,7 +122,8 @@ impl LayoutEngine {
             .iter()
             .map(|para| {
                 if !para.text.is_empty() {
-                    let mut fresh = compose_paragraph(para);
+                    let mut fresh =
+                        crate::renderer::composer::compose_paragraph_in_context(para, styles);
                     crate::renderer::composer::recompose_cell_lines_in_frame(
                         &mut fresh,
                         para,
@@ -192,8 +193,7 @@ impl LayoutEngine {
                 let mut col_height = 0.0;
 
                 for run in &line.runs {
-                    let text_style =
-                        resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                    let text_style = run.text_style(styles);
                     for ch in run.text.chars() {
                         if ch == '\n' || ch == '\r' {
                             char_offset += 1;
@@ -1043,7 +1043,7 @@ impl LayoutEngine {
             let composed_paras: Vec<_> = cell
                 .paragraphs
                 .iter()
-                .map(|p| compose_paragraph(p))
+                .map(|p| crate::renderer::composer::compose_paragraph_in_context(p, styles))
                 .collect();
 
             // 텍스트 오버플로우 시 좌우 패딩 축소

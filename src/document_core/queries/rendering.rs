@@ -27,7 +27,7 @@ use crate::renderer::kerning::{
     ExactFontRegistryRegistration, ExactFontSlot, MAX_KERNING_REGISTRY_SLOTS,
 };
 use crate::renderer::layer_renderer::LayerRenderer;
-use crate::renderer::layout::{estimate_text_width, resolved_to_text_style, CellContext};
+use crate::renderer::layout::{estimate_text_width, CellContext};
 use crate::renderer::page_layout::PageLayoutInfo;
 use crate::renderer::pagination::{
     HeaderFooterRef, MasterPageRef, PageContent, PaginationResult, Paginator,
@@ -1229,6 +1229,7 @@ impl DocumentCore {
 
     /// 페이지 렌더 트리를 생성하여 반환한다 (native bridge / 외부 렌더러용).
     pub fn build_page_render_tree(&self, page_num: u32) -> Result<PageRenderTree, HwpError> {
+        self.require_portable_metrics()?;
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         Ok(tree)
@@ -1240,6 +1241,17 @@ impl DocumentCore {
     }
 
     pub fn build_page_layer_tree_with_profile(
+        &self,
+        page_num: u32,
+        profile: RenderProfile,
+    ) -> Result<PageLayerTree, HwpError> {
+        self.require_portable_metrics()?;
+        self.build_canvas_page_layer_tree_with_profile(page_num, profile)
+    }
+
+    /// Canvas2D-only replay entry. Its caller owns the browser font generation;
+    /// portable/native replay must use the guarded generic entry above.
+    pub fn build_canvas_page_layer_tree_with_profile(
         &self,
         page_num: u32,
         profile: RenderProfile,
@@ -1464,6 +1476,7 @@ impl DocumentCore {
     /// Compatibility/diagnostic backend for comparing pre-paint SVG behavior during migration.
     /// Production routing must not call this function implicitly or through an environment flag.
     pub fn render_page_svg_legacy_native(&self, page_num: u32) -> Result<String, HwpError> {
+        self.require_portable_metrics()?;
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         let mut renderer = SvgRenderer::new();
@@ -1485,12 +1498,18 @@ impl DocumentCore {
         profile: RenderProfile,
     ) -> Result<String, HwpError> {
         let layer_tree = self.build_page_layer_tree_with_profile(page_num, profile)?;
+        self.render_layer_tree_svg(&layer_tree)
+    }
+
+    fn render_layer_tree_svg(&self, layer_tree: &PageLayerTree) -> Result<String, HwpError> {
+        let profile = layer_tree.profile;
+
         let mut renderer = SvgLayerRenderer::new();
         // WASM에서도 문서 내장 face 사용량을 수집한다. 실제 CSS 생성은 아래의
         // embedded-only 경로가 담당하므로 시스템 font file I/O는 발생하지 않는다.
         renderer.inner_mut().font_embed_mode = crate::renderer::svg::FontEmbedMode::Style;
         renderer.inner_mut().annotate_metric_font = self.annotate_metric_font;
-        renderer.render_page(&layer_tree)?;
+        renderer.render_page(layer_tree)?;
         let mut svg = renderer.output().to_string();
 
         // [#2524/#3126] print/profile SVG도 브라우저가 문서 내장 폰트를 직접
@@ -1504,6 +1523,14 @@ impl DocumentCore {
                 let insert = format!("\n<style>\n{}</style>\n", style_css);
                 svg.insert_str(pos + 1, &insert);
             }
+        }
+        if !profile.shows_editor_visuals() {
+            let links = self
+                .hyperlinks_in_layer_tree(&layer_tree)?
+                .iter()
+                .map(|l| l.pdf_link())
+                .collect::<Vec<_>>();
+            crate::renderer::hyperlinks::append_svg_links(&mut svg, &links);
         }
         Ok(svg)
     }
@@ -1565,10 +1592,18 @@ impl DocumentCore {
         }
 
         let mut svg_pages = Vec::with_capacity(page_nums.len());
+        let mut page_links = Vec::with_capacity(page_nums.len());
         for &page_num in page_nums {
-            svg_pages.push(self.render_page_svg_layer_with_profile_native(page_num, profile)?);
+            let tree = self.build_page_layer_tree_with_profile(page_num, profile)?;
+            svg_pages.push(self.render_layer_tree_svg(&tree)?);
+            page_links.push(
+                self.hyperlinks_in_layer_tree(&tree)?
+                    .iter()
+                    .map(|l| l.pdf_link())
+                    .collect(),
+            );
         }
-        crate::renderer::pdf::svgs_to_pdf_with_options(&svg_pages, options)
+        crate::renderer::pdf::svgs_to_pdf_with_links(&svg_pages, &page_links, options)
             .map_err(HwpError::RenderError)
     }
 
@@ -1637,10 +1672,18 @@ impl DocumentCore {
         }
 
         let mut layer_trees = Vec::with_capacity(page_nums.len());
+        let mut page_links = Vec::with_capacity(page_nums.len());
         for &page_num in page_nums {
-            layer_trees.push(self.build_page_layer_tree_with_profile(page_num, profile)?);
+            let tree = self.build_page_layer_tree_with_profile(page_num, profile)?;
+            page_links.push(
+                self.hyperlinks_in_layer_tree(&tree)?
+                    .iter()
+                    .map(|l| l.pdf_link())
+                    .collect(),
+            );
+            layer_trees.push(tree);
         }
-        crate::renderer::pdf::layer_trees_to_pdf_with_options(&layer_trees, options)
+        crate::renderer::pdf::layer_trees_to_pdf_with_links(&layer_trees, &page_links, options)
             .map_err(HwpError::RenderError)
     }
 
@@ -1737,6 +1780,7 @@ impl DocumentCore {
 
     /// HTML 렌더링 (네이티브 에러 타입)
     pub fn render_page_html_native(&self, page_num: u32) -> Result<String, HwpError> {
+        self.require_portable_metrics()?;
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         let mut renderer = HtmlRenderer::new();
@@ -1755,6 +1799,7 @@ impl DocumentCore {
     }
 
     pub fn render_page_canvas_legacy_native(&self, page_num: u32) -> Result<u32, HwpError> {
+        self.require_portable_metrics()?;
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         let mut renderer = CanvasRenderer::new();
@@ -2122,6 +2167,17 @@ impl DocumentCore {
         profile: RenderProfile,
         options: crate::paint::LayerJsonOptions,
     ) -> Result<String, HwpError> {
+        self.require_portable_metrics()?;
+        self.get_canvas_page_layer_tree_with_options_native(page_num, profile, options)
+    }
+
+    /// Geometry for the selected Canvas2D layout, not a portable export.
+    pub fn get_canvas_page_layer_tree_with_options_native(
+        &self,
+        page_num: u32,
+        profile: RenderProfile,
+        options: crate::paint::LayerJsonOptions,
+    ) -> Result<String, HwpError> {
         // [Task #2222] 직렬화 JSON 캐시 — 트리 캐시(#2227 with_page_tree_cached)가
         // 있어도 1MB 급 재직렬화가 renderPage 마다 렌더 비용과 맞먹게 반복된다
         // (주보 p2 실측: 15.2ms/회, JSON 1.05MB). 출력옵션 지문이 다르면 미스.
@@ -2133,7 +2189,7 @@ impl DocumentCore {
             }
         }
         let json = self
-            .build_page_layer_tree_with_profile(page_num, profile)?
+            .build_canvas_page_layer_tree_with_profile(page_num, profile)?
             .to_json_with_options(options);
         {
             // 토글(투명선/잘림보기 등) 왕복이 매번 미스가 되지 않도록 페이지당
@@ -5717,7 +5773,10 @@ impl DocumentCore {
                 .enumerate()
                 .map(|(i, p)| {
                     if matches.binary_search(&i).is_ok() {
-                        let mut c = compose_paragraph(p);
+                        let mut c = crate::renderer::composer::compose_paragraph_in_context(
+                            p,
+                            &self.styles,
+                        );
                         // [#2004] composer 가 line_seg 부족(HWP5 빈-문단)으로 1줄로 붕괴하면
                         // 그림 수만큼 줄을 합성(모두 char_start 동일)해 Stage2 stacked 게이트
                         // (comp.lines.len()==tac_controls) 가 발동하게 한다.
@@ -5745,9 +5804,9 @@ impl DocumentCore {
                         }
                         c
                     } else {
-                        base.and_then(|c| c.get(i))
-                            .cloned()
-                            .unwrap_or_else(|| compose_paragraph(p))
+                        base.and_then(|c| c.get(i)).cloned().unwrap_or_else(|| {
+                            crate::renderer::composer::compose_paragraph_in_context(p, &self.styles)
+                        })
                     }
                 })
                 .collect();
@@ -6973,7 +7032,8 @@ impl DocumentCore {
             return None;
         }
 
-        let composed = compose_paragraph(paragraph);
+        let composed =
+            crate::renderer::composer::compose_paragraph_in_context(paragraph, &self.styles);
         if composed.numbering_text.is_some()
             || !composed.inline_controls.is_empty()
             || !composed.tac_controls.is_empty()
@@ -7079,7 +7139,7 @@ impl DocumentCore {
                 return None;
             }
 
-            let mut style = resolved_to_text_style(&self.styles, run.char_style_id, run.lang_index);
+            let mut style = run.text_style(&self.styles);
             if !focused_partial_repaint_style_is_safe(&style) {
                 return None;
             }
@@ -7576,7 +7636,7 @@ impl DocumentCore {
             combined_paragraphs = paragraphs.iter().chain(en_paras.iter()).cloned().collect();
             let en_composed: Vec<_> = en_paras
                 .iter()
-                .map(|p| crate::renderer::composer::compose_paragraph(p))
+                .map(|p| crate::renderer::composer::compose_paragraph_in_context(p, &self.styles))
                 .collect();
             combined_composed = composed
                 .iter()

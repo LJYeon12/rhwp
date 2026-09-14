@@ -7,6 +7,9 @@ pub(crate) mod helpers;
 pub(crate) use helpers::*;
 
 pub mod builders;
+mod canvas_metric_requests;
+mod canvas_metrics;
+pub use canvas_metric_requests::{CanvasMetricBatch, CanvasMetricReply, CanvasMetricRequest};
 mod commands;
 pub use commands::paragraph_block::{
     FillTemplateRequest, FillTemplateResult, ImportParagraphBlockLimits,
@@ -23,6 +26,7 @@ pub mod converters;
 pub(crate) mod html_table_import;
 /// 한글 클립보드 문서모델(hwpjson) → HWPX 변환
 pub mod hwpjson;
+pub mod hyperlink;
 pub mod queries;
 pub mod table_calc;
 pub mod text_security;
@@ -178,6 +182,7 @@ pub struct DocumentCore {
     pub(crate) pagination: Vec<PaginationResult>,
     /// 해소된 스타일 세트
     pub(crate) styles: ResolvedStyleSet,
+    pub(crate) canvas_metrics: Option<canvas_metrics::CanvasMetricSession>,
     /// 구역별 구성된 문단 목록
     pub(crate) composed: Vec<Vec<ComposedParagraph>>,
     /// [#2308] source IR로부터 재생성되는 revision 기반 render normalization state.
@@ -459,6 +464,10 @@ impl DocumentCore {
     pub(crate) fn rebuild_resolved_styles(&mut self) {
         self.styles =
             crate::renderer::style_resolver::resolve_styles_for_document(&self.document, self.dpi);
+        self.styles.supplemental_metrics = self
+            .canvas_metrics
+            .as_ref()
+            .and_then(canvas_metrics::CanvasMetricSession::active_snapshot);
     }
 
     /// 한글 2024 계열 조판 에뮬레이션을 켜거나 끈다.
@@ -487,6 +496,7 @@ impl DocumentCore {
             document: Document::default(),
             pagination: Vec::new(),
             styles: ResolvedStyleSet::default(),
+            canvas_metrics: None,
             composed: Vec::new(),
             render_normalization: RenderNormalizationState::default(),
             dpi: DEFAULT_DPI,

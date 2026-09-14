@@ -1,6 +1,9 @@
 import init, { HwpDocument, version } from '@wasm/rhwp.js';
+import { CanvasMetricSession, withPortableMetrics } from './canvas-metric-session';
+import type { CanvasMetricDocument } from './canvas-metric-session';
 import { requireCharShapeRunsDocument, parseCharShapeRuns, validateCharShapeRuns } from './char-shape-runs';
 import type { CharShapeRun } from './types';
+import type { HyperlinkTarget, HyperlinkContext } from './hyperlink';
 import * as wasmExports from '@wasm/rhwp.js';
 import { blake3 } from '@noble/hashes/blake3.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
@@ -286,6 +289,41 @@ function installCanvasFontSubstitution(): void {
 
 export class WasmBridge {
   private doc: HwpDocument | null = null;
+  private canvasMetrics = new CanvasMetricSession();
+  private canvasFontGeneration = 0;
+
+  private canvasMetricDocument(): CanvasMetricDocument | null {
+    const doc = this.doc as unknown as Partial<CanvasMetricDocument> | null;
+    return doc && ['collectCanvasMetricRequests', 'registerCanvasMetricReplies', 'selectCanvasMetrics', 'canvasMetricsActive', 'getCanvasPageLayerTree']
+      .every(key => typeof doc[key as keyof CanvasMetricDocument] === 'function') ? doc as CanvasMetricDocument : null;
+  }
+
+  invalidateCanvasMetricFonts(): void {
+    this.canvasFontGeneration += 1;
+    this.invalidateCanvasMetrics();
+  }
+
+  get canvasMetricFontGeneration(): number { return this.canvasFontGeneration; }
+
+  /** Discard suspect measurements without manufacturing an external font change. */
+  invalidateCanvasMetrics(): void {
+    this.canvasMetrics.invalidate();
+    this.canvasMetricDocument()?.selectCanvasMetrics(false);
+  }
+
+  prepareCanvasMetrics(backend: string, isCurrent: () => boolean = () => true): Promise<boolean> {
+    const doc = this.doc;
+    const metricDoc = this.canvasMetricDocument();
+    if (!metricDoc) return Promise.resolve(false);
+    return this.canvasMetrics.prepare(metricDoc,
+      { document: this._documentGeneration, fonts: this.canvasFontGeneration }, backend,
+      () => this.doc === doc && isCurrent(), () => document.fonts.ready,
+      () => document.createElement('canvas').getContext('2d'));
+  }
+
+  withPortableMetrics<T>(operation: () => T): T {
+    return withPortableMetrics(this.canvasMetricDocument(), operation);
+  }
   private initialized = false;
   private _fileName = 'document.hwp';
   private _currentFileHandle: FileSystemFileHandleLike | null = null;
@@ -356,6 +394,7 @@ export class WasmBridge {
    * 비교 상세 창 등 보조 WasmBridge 인스턴스에서 반복 로드 시 메모리 누수를 줄이기 위해 사용한다.
    */
   releaseDocument(): void {
+    this.canvasMetrics.invalidate();
     if (this.doc) {
       try {
         this.doc.free();
@@ -972,6 +1011,8 @@ export class WasmBridge {
    */
   getPageLayerTree(pageNum: number): string {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    const metrics = this.canvasMetricDocument();
+    if (metrics?.canvasMetricsActive()) return metrics.getCanvasPageLayerTree(pageNum, 'screen', false);
     const d = this.doc as unknown as { getPageLayerTree?: (p: number) => string };
     if (typeof d.getPageLayerTree === 'function') {
       return d.getPageLayerTree(pageNum);
@@ -1062,7 +1103,10 @@ export class WasmBridge {
     if (!hasProfileApi && profile !== 'screen') {
       throw new Error('[WasmBridge] 현재 WASM은 profile별 PageLayerTree를 지원하지 않습니다');
     }
-    const json = hasProfileApi
+    const metrics = this.canvasMetricDocument();
+    const json = metrics?.canvasMetricsActive()
+      ? metrics.getCanvasPageLayerTree(pageNum, profile, typeof d.getSourceFontBytes === 'function')
+      : hasProfileApi
       ? d.getPageLayerTreeWithProfile!(
         pageNum,
         profile,
@@ -1191,7 +1235,7 @@ export class WasmBridge {
       throw new Error('[WasmBridge] 현재 WASM은 CanvasKit document preflight를 지원하지 않습니다');
     }
     return parseCanvasKitDocumentPreflight(
-      d.getCanvasKitDocumentPreflight(mode, profile),
+      this.withPortableMetrics(() => d.getCanvasKitDocumentPreflight!(mode, profile)),
       '[WasmBridge] CanvasKit document preflight',
     );
   }
@@ -1207,7 +1251,7 @@ export class WasmBridge {
 
   renderPageSvg(pageNum: number): string {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
-    return this.doc.renderPageSvg(pageNum);
+    return this.withPortableMetrics(() => this.doc!.renderPageSvg(pageNum));
   }
 
   renderPageSvgWithProfile(pageNum: number, profile: LayerRenderProfile): string {
@@ -1218,7 +1262,7 @@ export class WasmBridge {
     if (typeof d.renderPageSvgWithProfile !== 'function') {
       throw new Error('[WasmBridge] 현재 WASM은 profile별 SVG 렌더링을 지원하지 않습니다');
     }
-    return d.renderPageSvgWithProfile(pageNum, profile);
+    return this.withPortableMetrics(() => d.renderPageSvgWithProfile!(pageNum, profile));
   }
 
   getCursorRect(sec: number, para: number, charOffset: number): CursorRect {
@@ -3462,6 +3506,31 @@ export class WasmBridge {
   setFieldValueByName(name: string, value: string): { ok: boolean; fieldId: number; oldValue: string; newValue: string } {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
     return JSON.parse((this.doc as any).setFieldValueByName(name, value));
+  }
+
+  getHyperlinkContext(target: HyperlinkTarget): HyperlinkContext {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    return JSON.parse(this.doc.getHyperlinkContext(JSON.stringify(target)));
+  }
+
+  insertHyperlink(target: HyperlinkTarget, start: number, end: number, uri: string): number {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    return this.doc.insertHyperlinkEx(JSON.stringify({ target, start, end, uri }));
+  }
+
+  updateHyperlink(target: HyperlinkTarget, fieldId: number, uri: string): boolean {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    return this.doc.updateHyperlinkEx(JSON.stringify({ target, fieldId, uri }));
+  }
+
+  replaceHyperlinkText(target: HyperlinkTarget, fieldId: number, text: string): boolean {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    return this.doc.replaceHyperlinkTextEx(JSON.stringify({ target, fieldId, text }));
+  }
+
+  removeHyperlink(target: HyperlinkTarget, fieldId: number, restoreFormatting = false): void {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    this.doc.removeHyperlinkEx(JSON.stringify({ target, fieldId, restoreFormatting }));
   }
 
   /** 커서 위치의 필드 범위 정보를 조회한다. */

@@ -2167,7 +2167,7 @@ impl HeightMeasurer {
                         .iter()
                         .enumerate()
                         .map(|(pidx, p)| {
-                            let mut comp = compose_paragraph(p);
+                            let mut comp = crate::renderer::composer::compose_paragraph_in_context(p, styles);
                             // [Task #671] line_segs 비어 있는 셀 paragraph 의 단일 ComposedLine
                             // 압축 결과를 셀 가용 너비에 맞춰 다중 ComposedLine 으로 재분할.
                             // 측정/렌더링 일관성 (layout 의 같은 프레임 호출과 동일).
@@ -2386,12 +2386,27 @@ impl HeightMeasurer {
                                         // 1424+1613, `ls=460`). 그 6.1px 이 칸 높이에
                                         // 들어가 아래 흐름이 통째로 6px 밀렸다.
                                         // 보존 핀의 마지막 문단은 글자가 있어 종전대로다.
+                                        // [#7097] 글자가 아예 없는 빈 마지막 줄도 같다.
+                                        // 그 줄 뒤에 붙일 줄이 없으므로 trailing 줄간격을
+                                        // 칸 높이에 넣을 근거가 없다 — 36382471_masked 1쪽
+                                        // 2행이 8.05px 부풀어(350.10, 한/글 342.05) 3행이
+                                        // 통째로, 2행 안쪽 글자(vertAlign=CENTER)가 절반
+                                        // 내려갔다. 보존 핀(Task #874/#1086)의 마지막 문단은
+                                        // 글자가 있어 종전 회계 그대로다.
                                         let last_line_is_object_only =
                                             p.text.trim().is_empty() && !p.controls.is_empty();
+                                        // 글자도 개체도 없는 **완전한 빈 문단**. 공백 한 칸은
+                                        // 글리프라 제외한다 — KTX.hwp 2쪽 27문단 칸의 마지막
+                                        // 문단이 `" "`(lh=1400 ls=1120)이고, 그 trailing 을
+                                        // 빼면 valign=Center 인 칸 안 글자가 절반(7.47px)
+                                        // 올라가 한컴 정본(pdf/KTX-2022.pdf)에서 멀어진다.
+                                        let last_line_is_empty =
+                                            p.text.is_empty() && p.controls.is_empty();
                                         let include_trailing_ls = !is_cell_last_line
                                             || (cell_para_count > 1
                                                 && table.common.treat_as_char
-                                                && !last_line_is_object_only);
+                                                && !last_line_is_object_only
+                                                && !last_line_is_empty);
                                         if include_trailing_ls {
                                             let trailing =
                                                 hwpunit_to_px(line.line_spacing, self.dpi);
@@ -2805,7 +2820,8 @@ impl HeightMeasurer {
                     cell.paragraphs
                         .last()
                         .map(|p| {
-                            let mut comp = compose_paragraph(p);
+                            let mut comp =
+                                crate::renderer::composer::compose_paragraph_in_context(p, styles);
                             crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
                                 &mut comp,
                                 p,
@@ -2885,7 +2901,9 @@ impl HeightMeasurer {
                         && required_height > cell_h_px * 1.5
                     {
                         for (cell_para_index, cell_para) in cell.paragraphs.iter().enumerate() {
-                            let mut comp = compose_paragraph(cell_para);
+                            let mut comp = crate::renderer::composer::compose_paragraph_in_context(
+                                cell_para, styles,
+                            );
                             crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
                                 &mut comp,
                                 cell_para,
@@ -3107,7 +3125,7 @@ impl HeightMeasurer {
                         .iter()
                         .enumerate()
                         .map(|(pidx, p)| {
-                            let mut comp = compose_paragraph(p);
+                            let mut comp = crate::renderer::composer::compose_paragraph_in_context(p, styles);
                             // [Task #671] line_segs 비어 있는 셀 paragraph 의 단일 ComposedLine
                             // 압축 결과를 셀 가용 너비에 맞춰 다중 ComposedLine 으로 재분할.
                             crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
@@ -3310,12 +3328,27 @@ impl HeightMeasurer {
                                         // 1424+1613, `ls=460`). 그 6.1px 이 칸 높이에
                                         // 들어가 아래 흐름이 통째로 6px 밀렸다.
                                         // 보존 핀의 마지막 문단은 글자가 있어 종전대로다.
+                                        // [#7097] 글자가 아예 없는 빈 마지막 줄도 같다.
+                                        // 그 줄 뒤에 붙일 줄이 없으므로 trailing 줄간격을
+                                        // 칸 높이에 넣을 근거가 없다 — 36382471_masked 1쪽
+                                        // 2행이 8.05px 부풀어(350.10, 한/글 342.05) 3행이
+                                        // 통째로, 2행 안쪽 글자(vertAlign=CENTER)가 절반
+                                        // 내려갔다. 보존 핀(Task #874/#1086)의 마지막 문단은
+                                        // 글자가 있어 종전 회계 그대로다.
                                         let last_line_is_object_only =
                                             p.text.trim().is_empty() && !p.controls.is_empty();
+                                        // 글자도 개체도 없는 **완전한 빈 문단**. 공백 한 칸은
+                                        // 글리프라 제외한다 — KTX.hwp 2쪽 27문단 칸의 마지막
+                                        // 문단이 `" "`(lh=1400 ls=1120)이고, 그 trailing 을
+                                        // 빼면 valign=Center 인 칸 안 글자가 절반(7.47px)
+                                        // 올라가 한컴 정본(pdf/KTX-2022.pdf)에서 멀어진다.
+                                        let last_line_is_empty =
+                                            p.text.is_empty() && p.controls.is_empty();
                                         let include_trailing_ls = !is_cell_last_line
                                             || (cell_para_count > 1
                                                 && table.common.treat_as_char
-                                                && !last_line_is_object_only);
+                                                && !last_line_is_object_only
+                                                && !last_line_is_empty);
                                         if include_trailing_ls {
                                             let trailing =
                                                 hwpunit_to_px(line.line_spacing, self.dpi);
@@ -3695,7 +3728,8 @@ impl HeightMeasurer {
                     let para_count = cell.paragraphs.len();
 
                     for (pi, p) in cell.paragraphs.iter().enumerate() {
-                        let comp = compose_paragraph(p);
+                        let comp =
+                            crate::renderer::composer::compose_paragraph_in_context(p, styles);
                         let para_style = styles.para_styles.get(p.para_shape_id as usize);
                         let is_last_para = pi + 1 == para_count;
                         // compute_cell_line_ranges와 동일 규칙:

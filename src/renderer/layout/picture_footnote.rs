@@ -73,10 +73,10 @@ fn compose_footnote_paragraph(
                 styles,
                 dpi,
             );
-            return compose_paragraph(&owned);
+            return crate::renderer::composer::compose_paragraph_in_context(&owned, styles);
         }
     }
-    compose_paragraph(para)
+    crate::renderer::composer::compose_paragraph_in_context(para, styles)
 }
 
 fn footnote_composed_line_count(
@@ -872,7 +872,8 @@ impl LayoutEngine {
             let first_caption_node = parent_node.children.len();
             let para_y_before_layout = para_y;
             // 먼저 문단을 조합
-            let mut composed = compose_paragraph(para);
+            let mut composed =
+                crate::renderer::composer::compose_paragraph_in_context(para, styles);
 
             // AutoNumber 컨트롤 처리: 조합된 텍스트에 번호 삽입
             self.apply_auto_numbers_to_composed(&mut composed, para, auto_counter);
@@ -1038,7 +1039,7 @@ impl LayoutEngine {
             .runs
             .iter()
             .map(|run| {
-                let ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                let ts = run.text_style(styles);
                 if ts.font_size > 0.0 {
                     ts.font_size
                 } else {
@@ -1365,7 +1366,7 @@ impl LayoutEngine {
             // 원본 TextRun들
             let mut char_offset = comp_line.char_start;
             for run in &comp_line.runs {
-                let text_style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                let text_style = run.text_style(styles);
                 let width = estimate_text_width(&run.text, &text_style);
 
                 let run_id = tree.next_id();
