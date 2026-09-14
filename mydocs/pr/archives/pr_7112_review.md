@@ -209,3 +209,22 @@ merge SHA·devel asset 반영을 확인한 다음 승인된 범위에서 UTF-8 M
 API로 본문·한글·고정 이미지 링크를 재확인한다. 이 문단은 게시 계획이며 게시 완료가 아니다.
 
 [적용·후속 단계](pr_7112_review_impl.md)
+
+### 후속 댓글용 최종 Sweep 지표 보완
+
+최종 renderer `2f59c8937`의 Native Visual Sweep(96dpi, 픽셀 차이 threshold 32) 결과다.
+위 원 PR의 직접 시각 판정·대표 비교 PNG와 함께 다음 수치를 게시한다. 자동 flag 수는 페이지별 후보 유형 수이며 객체나 실제 결함 개수가 아니다.
+
+| 입력·쪽 | 자동 flag 유형 수 | pixel_match | visual_accuracy_proxy_percent |
+| --- | --- | --- | --- |
+| disaster 1쪽 | 0 (없음) | 91.74059% | 9.71104% |
+| health 1쪽 | 0 (없음) | 90.01752% | 11.66225% |
+
+기존 PNG는 위 본문에서 설명한 한컴/보정 전/통합 비교이며, 이 표는 최종 코드의 재실행 지표다. #7132를 포함한 이 표의 입력은 후속 메인터너 보정 전후 SVG가 동일했다.
+objection-form/cancel-request의 단일 쪽은 overlay JSON에서 원본 파일 숫자(3030681/3079571)가 page 키로 들어간 기존 계수 문제를 실제 1쪽과 대응했다. 수치 자체는 변경하지 않았다.
+픽셀 일치율은 여백·글꼴·기존 위치 차이의 영향을 받는다. 잉크 기반 proxy는 사람의 정확도 판정이 아니며, 전 문서 한컴 동등성으로 주장하지 않는다.
+기존 차이와 부분 개선의 범위는 위 직접 판정을 유지한다.
+대표 asset은 [비교 PNG](../assets/pr7112_health-p001_3way.png)이며, 실제 merge 뒤
+`https://raw.githubusercontent.com/edwardkim/rhwp/<merge-commit-sha>/mydocs/pr/assets/pr7112_health-p001_3way.png`로 고정한다.
+[Visual Sweep GitHub comment 정본](../../manual/verification/visual_sweep_guide.md#github-merge-comment)을 연결하고,
+merge SHA·devel asset을 확인한 뒤 `--body-file` 게시 및 API 재조회 조건을 따른다.
