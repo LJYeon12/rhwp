@@ -5,89 +5,127 @@ canonical: mydocs/manual/pr_review_workflow.md
 last_verified: 2026-09-14
 ---
 
-# PR #7115 — 아래아 U+318D 전각 fallback 검토
+# PR #7115 — U+318D 전각과 NO_LS 마지막 줄 메인터너 검토
 
-**최종 판정: 머지 보류.** F1 [P1, 실행 시각 회귀]: 80168 108쪽 오른쪽 셀의 `9. 그 밖에 시ㆍ도조례로 정하는 사항`이 두 줄이 되면서 이후 내용이 33.6px 아래로 밀린다. 표 bbox는 전후 x=75.6,y=107.6,w=640.4,h=910.0으로 동일하다. 한컴/변경 전의 108쪽 끝 `3. 그 밖에 시ㆍ도조례로 정하는 사항`이 candidate 109쪽 맨 위로 이동한다. 유효 저장 줄의 측정·배치/재조판 경계를 점검하고 해당 페이지 소속을 독립 PDF 회귀로 고정해야 한다. 76→77쪽 기존 차이도 커져 함께 검토 대상이다.
+**최종 판정: 보류 사유 해소 — 원 PR의 부분 개선 범위 수용.** F1의 80168 108쪽 추가 줄바꿈·109쪽 이동과 75쪽에서 시작된 76~77쪽 한 줄 증가를 해소하고, 49쪽 다줄 대조군을 유지한다. 올바른 U+318D 전각 fallback을 반각으로 되돌리지 않았다.
 
-## 대상과 체리픽
+## 대상·rebase·보정 이력
 
 | 항목 | 확인값 |
 | --- | --- |
-| 원 PR | [#7115](https://github.com/edwardkim/rhwp/pull/7115) — 수정: ㆍ(U+318D) 를 반각으로 박던 폴백을 전각으로 되돌린다 (#7080) |
-| 작성자 / reviewer | planet6897 / jangster77 사전 지정 |
-| 원 base / 규모 | `devel`; 3 files, +212/-60 |
-| source head | `fa94b52a07de08af9d4320ab911caefa19e323dd` |
-| 최초 기준 devel | `93ffc3dd59c120bd54df4c2ac6d1ddbe630f8a2d` |
-| 검증한 누적 code head | `48afe0f95abc4cd76b002dfc314f3cc044f10b31` — 12 PR / 16 commit |
-| 원본·기준 PDF 보존 commit | `6933852a11b7e5998429eeb15708fdaeed7db626` |
-| 최신 devel 정렬 | `037e4906a93e99896daa145a5ee5517824bfeaf4`; 정렬 후 로컬 head `28d702d8f84bacb7ecec4f2a6dafd049e09bfcfa` |
-| 검토 branch / target | `review/planet6897-20260914` / `target/planet6897-review-20260914` |
-| 원 PR 상태 snapshot | 2026-09-14T16:10:01.589135+09:00; OPEN, draft=False, merge=UNKNOWN |
-| 관련 이슈 | [#7080](https://github.com/edwardkim/rhwp/issues/7080); 부분 반영 범위만 판단, 이번 작업에서 종료하지 않음 |
+| 원 PR / 작성자 | [#7115](https://github.com/edwardkim/rhwp/pull/7115) / planet6897 |
+| source SHA | `fa94b52a07de08af9d4320ab911caefa19e323dd` |
+| rebase 후 cherry-pick SHA | `0fb0d9345963471fe5bbceee0944ef854c5008aa`; 원 저자와 `-x` 출처 보존 |
+| 메인터너 보정 | `b80db1a21 + 2f59c8937 (초기 5d35b37cc의 전역 공백 보정 철회)` |
+| 검증 Renderer 코드 | `2f59c89373f497068f9a0bcb2c22730ec7dc7e51` |
+| WASM 캡처 도구 | `321f4cdb4`; Visual Sweep `--wasm-pkg`로 직접 캡처 |
+| 작업 시작 시 동기화 기준 | `upstream/devel` 및 local `devel`: `037e4906a93e99896daa145a5ee5517824bfeaf4` |
+| 작업 branch / target | `review/planet6897-20260914` / `target/planet6897-review-20260914` |
+| rebase | 원 18 commit을 최신 기준 위에 재적용, 충돌 없음; 보정 전 head `51498859ef3d14a6a73f38ea3bfab4e9fb2ac9ca` |
+| 원본·PDF 보존 commit | `ab3184254`; 기존 입력을 이름 변경해 중복 추가하지 않음 |
+| 원 PR 상태 | 2026-09-14 재조회: OPEN, non-draft, source SHA 동일; mergeable / mergeState UNKNOWN |
+| 관련 이슈 | [#7080](https://github.com/edwardkim/rhwp/issues/7080); 이번 로컬 작업에서 close하지 않음 |
 
-대상은 조사 시점 open·non-draft 12개다. draft #7098은 제외했다. 최종 재조회에서도 대상과 source SHA는 같았다.
-원 PR의 성공/skip CI는 확인했지만 최신 통합 candidate의 GitHub Actions 결과로 재사용하지 않는다.
-검토·체리픽은 로컬 작업이며 원격 PR 생성·push·merge·close는 아직 하지 않았다.
+이번 보정 전에 local devel을 fast-forward하고 review branch를 rebase했다.
+rebase 전 이력은 `codex/planet6897-before-maintainer-rebase-20260914`에 보존했다.
+누적 대상은 #7094, #7100, #7104, #7111, #7112, #7113, #7115, #7116, #7117, #7120, #7131, #7132이며
+원 16 commit의 저자·출처를 유지했다. draft #7098은 제외했다. 원 reviewer는 jangster77이다.
+원 PR의 CI와 이번 통합 코드 검증을 구분하며, 원격 push·통합 PR·merge·comment는 이 기록의 완료 항목이 아니다.
 
-| 원 commit | 로컬 적용 commit | 보정 |
+## 보류 사유와 메인터너 해결
+
+**원인:** 이전 review의 유효 저장 LineSeg 가설을 정정한다. 실제 원본은 section 0, 표 host pi=936, cell=3, p=9/13의 LineSeg가 없는 NO_LS 문단이다. 들여쓴 다줄 셀의 반각 공백 채움 규칙이 양쪽정렬 분배가 없는 마지막 한 줄에도 적용돼 문장 끝을 밀었다.
+
+**보정:** 동일한 frame 채움기로 현재 행 시작부터 글꼴 공백 후보를 계산하고, 남은 문단이 그 구간에서 끝나는 경우에만 후보 행·폭·높이를 함께 게시한다. 한 행 문단과 다줄 문단의 마지막 행에 공통 적용하며, 중간 행은 기존 반각 채움을 유지한다. 토큰 경계 재생은 이진 탐색으로 찾고, 커닝이 준비된 문단은 기존 폭 소유 경로를 유지한다. 원본 Justify와 NO_LS 들여쓰기 계약을 사용하며 파일명·쪽수·문자열 조건을 생산 코드에 넣지 않았다. 처음 시도한 전역 min(반각, 글꼴 공백) 보정은 49쪽을 과소 측정해 철회했다.
+
+**직접 검증:** 독립 한컴 PDF p108의 9호와 마지막 3호가 각각 완전한 한 줄로 p108에 남는다. p75의 부대시설 조항은 한컴과 같은 3행 및 각 행의 전체 문자열을 검사한다. 그 마지막 다)가 별도 행으로 밀리지 않아 p76~77에 원 PR이 더한 한 줄을 제거한다. p49 대조군은 자산관리회사 조항의 줄끝 운 / 법 / 인과 총 3행을 유지한다. 전체 문서 페이지 수만으로 통과시키지 않고 Visual Sweep에서 해당 문장과 후속 내용을 직접 확인한다.
+
+**범위·잔여:** 76~77쪽은 원 PR 이전 base의 흐름으로 복구한 것이며 한컴 전체 일치가 아니다. p77의 이전 조항 2행 잔존, p109 상단 여백, 기존 글꼴·좌표 차이 및 76076 p81의 사고/사고를 차이는 별도 잔여다. 이 차이를 숨기기 위해 문서별 분기나 baseline 갱신을 추가하지 않았다.
+
+| 조판 원칙 공통 항목 | 검토 결과 |
+| --- | --- |
+| 원인·일반성 | 원본 속성 및 독립 한컴 PDF/구문 계약을 사용. 문서 ID·문자열별 생산 분기 없음 |
+| 측정·배치 일관성 | 조판 보정은 동일 frame의 행·폭·높이를 fit/paint에 공유. 수식 보정은 tokenizer 앞의 정규화 계층 |
+| 줄 소속·점유 높이 | 원본 저장 LineSeg와 NO_LS를 구분하고 source IR에 렌더 전용 행을 덮어쓰지 않음 |
+| 독립 증거와 반례 | 같은 원본의 한컴 PDF, 보정 전 코드, 최종 코드 및 반례를 분리해서 확인 |
+| baseline·허용치 | 메인터너 보정으로 golden/ratchet/허용치를 완화하지 않음 |
+| 주장·검증 경계 | 이 문서의 최종 code SHA와 실제 실행 결과를 기록. 기존 차이는 해결로 세지 않음 |
+| 입력 보존 | 다음 표의 Git/LFS 원본과 PDF를 재사용; 다운로드 폴더만 가리키지 않음 |
+
+## Visual Sweep 판정과 증적
+
+렌더 비교는 [Visual Sweep 정본](../../manual/verification/visual_sweep_guide.md)의
+`scripts/visual_sweep.py`로 수행하고 생성된 비교·overlay PNG를 직접 읽는다.
+단순 페이지 수·픽셀 점수 또는 과거 candidate의 성공만으로 통과시키지 않는다.
+21개 입력 363쪽의 전체 SVG·render tree·문자/레이아웃 ledger를 생성하고 보정 전 통합과 대조했다.
+19개 문서는 SVG가 전부 동일하고 synth 1~2쪽과 80168 21/75/76/77/108/109쪽, 총 8쪽이 변경됐다.
+실제로 변경된 페이지와 p49/p108 등의 대조 페이지는 최종 바이너리로 다시 Sweep했다.
+
+| 입력·쪽 | 직접 확인한 변화/대조 | 남은 차이 |
 | --- | --- | --- |
-| `fa94b52a07de08af9d4320ab911caefa19e323dd` | `8a90acbabcfa3a1fe503b5a7a9b9dc8e88b74e65` | 충돌 없음; -x·저자 유지 |
+| 80168 21 | 10호 마지막 빗물처리계획이 한컴처럼 한 행으로 끝남. 종전 별도 획 행 제거. | 쪽 시작과 이후 조항의 기존 줄바꿈 차이 잔존 |
+| 80168 49 | 자산관리회사 1호의 운 / 법 / 인 3행 보존. | 다른 조항의 기존 글꼴·줄끝 차이 잔존 |
+| 80168 75 | 부대시설 2호가 한컴과 같은 전체 문자열의 3행. 별도 다) 행 제거. | 쪽 하단은 기존 base와 같은 한 줄 차이 유지 |
+| 80168 76 | 원 PR의 추가 한 줄 밀림 제거. 본문 첫 줄이 base의 변경하지 아니하는 범위에서 건축으로 복구. | 한컴 PDF 첫 줄과는 기존 한 줄 차이 |
+| 80168 77 | 원 PR 이전처럼 앞 조항 잔여 2행과 3호 3행. 원 PR이 더한 한 행 제거. | 한컴에는 앞 조항 잔여가 없는 기존 차이 |
+| 80168 108 | 9호와 마지막 3호가 각각 한 줄로 같은 108쪽에 남음. | 그 밖의 기존 글꼴·들여쓰기·줄끝 차이 |
+| 80168 109 | 이전 쪽 마지막 3호가 잘못 넘어오던 현상 제거. | 기존 상단 여백과 표 아래선 위치 차이 유지 |
+| 76076 81 | 전체 82쪽 SVG가 보정 전 통합본과 동일. 이쪽의 사고/사고를 잔여도 재확인. | 한컴의 사고와 candidate 사고를 차이는 이번 해결 대상 아님 |
+| form002 1 | 양식과 항목 구조 유지; 전체 10쪽 SVG 동일. | 기존 글꼴·위치 차이 유지 |
 
-### 실제 변경 경로
+`_sweep.png`와 `_overlay.png`는 Visual Sweep 원출력이다. `_three_way.png`는 같은 Sweep의
+PDF·최종 PNG에 보정 전 SVG를 동일 webfont rasterizer로 렌더한 결과를 나란히 놓은 보조 비교다.
 
-- `src/renderer/layout/text_measurement.rs` (+42/-11)
-- `tests/cases/issue_7080_area_dot_fullwidth.rs` (+121/-0)
-- `tests/golden_svg/form-002/page-0.svg` (+49/-49)
+- [pr7115_maintainer_form002_p001_sweep](../assets/pr7115_maintainer_form002_p001_sweep.png) — SHA-256 `c53df6df854216be752992bc32ae20293411802521b883b74a7e2b98c43061b2`
+- [pr7115_maintainer_reg76076_p081_sweep](../assets/pr7115_maintainer_reg76076_p081_sweep.png) — SHA-256 `2773cf1b77de5b1e3bfa43d49c256d436c4a42989f2a41e9d7b3707db264c5ea`
+- [pr7115_maintainer_reg80168_p021_sweep](../assets/pr7115_maintainer_reg80168_p021_sweep.png) — SHA-256 `45713b36c8b9b39790b5b90d6e81afaada436ed542b82ca073f4539f9ce16434`
+- [pr7115_maintainer_reg80168_p021_three_way](../assets/pr7115_maintainer_reg80168_p021_three_way.png) — SHA-256 `6945d5575475f5ef286bfd8e3d4ffbdadd552bc087d48d75b1b82f5fec4887c1`
+- [pr7115_maintainer_reg80168_p049_sweep](../assets/pr7115_maintainer_reg80168_p049_sweep.png) — SHA-256 `f6918f01c924be6d988934fe0dc61dc1ddfb30f405765579713a834cfd7bef1a`
+- [pr7115_maintainer_reg80168_p049_three_way](../assets/pr7115_maintainer_reg80168_p049_three_way.png) — SHA-256 `5759b5bb39cdb85758d94f0a3487889b56dc87467e51be77e0e4315315ba9770`
+- [pr7115_maintainer_reg80168_p075_sweep](../assets/pr7115_maintainer_reg80168_p075_sweep.png) — SHA-256 `d29a20bc9267a67fccf823ad2bfb12b4a335268d862303f10b2ac242c45fb05f`
+- [pr7115_maintainer_reg80168_p075_three_way](../assets/pr7115_maintainer_reg80168_p075_three_way.png) — SHA-256 `37dc4b6f5d6853e4f6c6a4e01c1b0ea849baa1869c46dc200c5cbe372502d3f0`
+- [pr7115_maintainer_reg80168_p076_sweep](../assets/pr7115_maintainer_reg80168_p076_sweep.png) — SHA-256 `f6cf63e94eefa4bb69b5e770dbaf8e1f8a726f6f3f2b1d71de0f21123975c31b`
+- [pr7115_maintainer_reg80168_p077_sweep](../assets/pr7115_maintainer_reg80168_p077_sweep.png) — SHA-256 `c0e58869e74d56770aa09e4538c78b0822ec3c05cb6735ffb0e033f7189b5027`
+- [pr7115_maintainer_reg80168_p108_sweep](../assets/pr7115_maintainer_reg80168_p108_sweep.png) — SHA-256 `2fa3e60101d30ac1d131e68cc78029bd61b18c9b18f658468c9240daceee5fbf`
+- [pr7115_maintainer_reg80168_p108_three_way](../assets/pr7115_maintainer_reg80168_p108_three_way.png) — SHA-256 `301a1234c525d02f18eeab82dfd1717711f0634a2604170117fc8979e00659ac`
+- [pr7115_maintainer_reg80168_p109_sweep](../assets/pr7115_maintainer_reg80168_p109_sweep.png) — SHA-256 `e357947b6d0bf5291bba1cf9d6d8ddedcca48c870219a17be0b09f83eb1c9e6d`
+- [pr7115_maintainer_wasm_reg80168_p108](../assets/pr7115_maintainer_wasm_reg80168_p108.png) — SHA-256 `dce90823dd64e6a9261a51d2bdc52f8262c52301c6b089474c0495a59919b14c`
+- [pr7115_maintainer_wasm_reg80168_p108_overlay](../assets/pr7115_maintainer_wasm_reg80168_p108_overlay.png) — SHA-256 `2eaf2a3d974cfff4bae07cf89f3b1094050cd952dd16f61d09381fd1025e8aa6`
 
-## 조판 원칙과 원인 계층
+Chrome 152.0.7977.83에서 새 WASM의 SVG API로 5개 원본을 렌더했다. 텍스트 노드의 속성과 문자열을 Native와 직접 대조했다.
 
-U+318D의 fallback 전진폭은 독립 글꼴·한컴 출력에 따라 정해야 하며, 올바른 glyph 폭을 적용한 뒤에도 유효 저장 줄 소속과 페이지 경계를 보존해야 한다. 글자폭을 다시 줄여 페이지 차이를 숨기는 보정은 수용하지 않는다.
+| 입력 | 확인 쪽 / 전체 쪽 | Native / WASM Text 노드 | 속성·문자열 |
+| --- | --- | --- | --- |
+| reg80168 | 108 / 157 | 319 / 319 | 일치 |
+| soil | 1 / 6 | 752 / 752 | 일치 |
+| transistor | 2 / 11 | 560 / 560 | 일치 |
+| table-text | 1 / 1 | 140 / 140 | 일치 |
+| synth | 1 / 3 | 883 / 883 | 일치 |
 
-주요 검토 위치: [src/renderer/layout/text_measurement.rs](../../../src/renderer/layout/text_measurement.rs).
+최종 브라우저 증적은 `321f4cdb4`의 Visual Sweep `--wasm-pkg` 경로로 다시 생성했다. 같은 Chrome WASM 문서에서 SVG와 render tree를 만들고, Sweep 내부에서 같은 원본의 CLI 글꼴 별칭과 공통 webfont 정책을 적용한다. 별도 HTML 캡처에서 발생한 휴먼명조 문제를 우회한 파일을 최종 증적으로 사용하지 않는다. `_wasm_*.png`도 이제 Sweep의 PDF 나란히 비교 또는 overlay 원출력이다. 원 SVG는 `wasm/raw_svg`, 실제 Chrome 버전·쪽 수·해시는 각 manifest에 남긴다. 5개 입력의 14쪽을 직접 Sweep했고, 전체 178쪽의 WASM SVG 텍스트 속성·문자열과 render tree는 Native 결과와 모두 동일했다. 새 도구의 Python 테스트 50개와 webfont 테스트 6개가 통과했다.
 
-| 공통 항목 | 판정 | 근거·제한 |
-| --- | --- | --- |
-| 구현 근거와 일반성 | 충족 | U+318D의 fallback 전진폭은 독립 글꼴·한컴 출력에 따라 정해야 하며, 올바른 glyph 폭을 적용한 뒤에도 유효 저장 줄 소속과 페이지 경계를 보존해야 한다. 글자폭을 다시 줄여 페이지 차이를 숨기는 보정은 수용하지 않는다. |
-| 측정·배치 일관성 | 미충족 | 공통 측정·배치 값과 한컴의 실제 위치를 다음 절에서 대조한다. #7104와 #7115의 미해결 줄/그림 경계는 통과로 보지 않는다. |
-| 줄 소속과 점유 높이 | 미충족 | 저장 LineSeg·합성 재조판의 적용 조건과 실제 뒤 내용 위치를 함께 확인했다. 보류 항목은 원인과 해제 조건을 다음 절에 기록했다. |
-| 사례와 증거의 독립성 | 충족 | 합성 계약과 실제 원본·한컴 PDF/직렬화/API·진단 증거를 분리했다. 실행 결함이 발견된 경우에도 정상 샘플 통과로 상쇄하지 않았다. |
-| 기준값 변경 | 충족 | 원 PR baseline/golden diff와 독립 PDF·실제 진단 증가를 대조했다. #7115의 올바른 글자폭 golden은 다른 페이지 소속 회귀의 승인 근거가 아니다. 메인터너가 실패를 숨기려고 추가 갱신한 baseline은 없다. |
-| 주장과 검증 범위 | 충족 | source SHA·실행 코드·실제 원본·명령·결과를 아래에 기록했다. 실행 회귀, 기존 잔여, 미검증을 구분하고 원 PR CI를 통합 CI로 재사용하지 않았다. |
-| 실제 입력 커밋 | 충족 | 개인 다운로드 경로만 남기지 않고 Git object 또는 LFS oid와 실제 SHA-256을 대조했다. 기존 동일 파일은 재추가하지 않았다. |
-
-## 직접 실행·시각 판정
-
-form-002의 아래아 전진과 80168의 아래아 run은 전각 쪽으로 개선된다. 동시에 80168 157쪽 전수 문자·layout ledger가 108→109쪽의 새 16문자 이동을 검출했고 두 쪽의 PDF/전후 raster에서 확인했다. baseline은 두 쪽 모두 문자 차이 0, candidate는 각각 reference-only 16 / SVG-only 16이다.
-
-F1 [P1, 실행 시각 회귀]: 80168 108쪽 오른쪽 셀의 `9. 그 밖에 시ㆍ도조례로 정하는 사항`이 두 줄이 되면서 이후 내용이 33.6px 아래로 밀린다. 표 bbox는 전후 x=75.6,y=107.6,w=640.4,h=910.0으로 동일하다. 한컴/변경 전의 108쪽 끝 `3. 그 밖에 시ㆍ도조례로 정하는 사항`이 candidate 109쪽 맨 위로 이동한다. 유효 저장 줄의 측정·배치/재조판 경계를 점검하고 해당 페이지 소속을 독립 PDF 회귀로 고정해야 한다. 76→77쪽 기존 차이도 커져 함께 검토 대상이다.
-
-**잔여·미검증:** 페이지 총수 157과 SVG golden 통과로 이 회귀를 감추지 않는다. #7117과 동시에 바뀐 form-002는 두 효과를 함께 대조했으며 golden을 임의 갱신하지 않았다. U+318D fallback 함수만 되돌린 대조 빌드에서 9번 문장이 한 줄로 복구되고 3번 문장이 108쪽 y=981.9로 돌아왔다. 원인 귀속을 확인했으며 실험 후 source는 동일 해시로 복구했다.
-
-시각 검증 필요: **예**. 전체 문서의 SVG·render tree·문자/레이아웃 ledger를 생성하고, 아래 페이지를 96dpi로 한컴 PDF / base / 통합 세 방향으로 직접 읽었다. 페이지 수·픽셀 점수만으로 통과시키지 않았다.
-
-- form002-p001: [한컴 / 변경 전 / 통합 비교](../assets/pr7115_form002-p001_3way.png), [한컴·통합 overlay](../assets/pr7115_form002-p001_ovl.png)
-- reg80168-p108: [한컴 / 변경 전 / 통합 비교](../assets/pr7115_reg80168-p108_3way.png), [한컴·통합 overlay](../assets/pr7115_reg80168-p108_ovl.png)
-- reg80168-p109: [한컴 / 변경 전 / 통합 비교](../assets/pr7115_reg80168-p109_3way.png), [한컴·통합 overlay](../assets/pr7115_reg80168-p109_ovl.png)
-- reg80168-p076: [한컴 / 변경 전 / 통합 비교](../assets/pr7115_reg80168-p076_3way.png), [한컴·통합 overlay](../assets/pr7115_reg80168-p076_ovl.png)
-- reg80168-p077: [한컴 / 변경 전 / 통합 비교](../assets/pr7115_reg80168-p077_3way.png), [한컴·통합 overlay](../assets/pr7115_reg80168-p077_ovl.png)
-
-원본 PDF가 내장하지 않은 글꼴의 기존 매핑, editor-only placeholder, 선 굵기 차이는 전체 일치로 판정하지 않았다.
-단일 쪽 SVG가 `_001` 없이 저장되면 fidelity helper의 파일명 기반 쪽수가 0으로 표시되는 경우가 있었다.
-실제 SVG·render-tree 파일과 한컴 PDF 1쪽을 확인해 계수 오류와 렌더 실패를 구분했다.
+기존 before는 `48afe0f95`, 최초 base는 `93ffc3dd5`에서 만든 동결 바이너리다.
+각각 rebased 보정 전 `51498859e`, 최신 base `037e4906a`와 Rust source·Cargo 입력의 diff가 없음을 확인했다.
+최종 바이너리는 `2f59c89373f497068f9a0bcb2c22730ec7dc7e51`에서 빌드한 뒤 동결하고 변경 source의 SHA-256을 검증 종료 시 대조했다. 새 한컴 변환을 이번에 다시 했다고 주장하지 않는다.
 
 ## 입력·기준 출력 보존
 
-확인 tree: `28d702d8f84bacb7ecec4f2a6dafd049e09bfcfa`. 다음 SHA-256은 LFS pointer 문자열이 아닌 실제 파일 바이트의 해시이며,
-Git object 또는 LFS oid와 일치한다. full/OVR 공통 입력은 아래 재현 명령의 저장소 fixture 집합을 사용했다.
+확인 tree: `2f59c89373f497068f9a0bcb2c22730ec7dc7e51`. 다음 SHA-256은 LFS pointer 문자열이 아닌 실제 파일 바이트의 해시이며,
+모두 Git에 포함된 원본이며 LFS 파일은 실제 바이트의 oid도 확인했다. full/OVR 공통 입력은 아래 재현 명령의 저장소 fixture 집합을 사용했다.
 
 | 저장소 파일 | 출처·역할 | SHA-256 |
 | --- | --- | --- |
 | [samples/hwpx/form-002.hwpx](../../../samples/hwpx/form-002.hwpx) | 한컴 입력; form002 | `5ab8f7c368e02538f75f1cd2bd82bbd8de2f925a54ba7b38ec9395b2cdb804d4` |
 | [pdf/hwpx/form-002-2022.pdf](../../../pdf/hwpx/form-002-2022.pdf) | 독립 한컴 PDF 10쪽; 직접 sweep 1쪽 | `629f1d93be234e4c4c551d319e247c1158d225cfe8a86bb179754a1b6cf2e077` |
 | [samples/80168_regulatory_analysis.hwp](../../../samples/80168_regulatory_analysis.hwp) | 한컴 입력; reg80168 | `c8ad10fe9f07be5119cd804278017aefa46e555bbee4f05f0f5132fe4f591a22` |
-| [pdf/80168_regulatory_analysis-2022.pdf](../../../pdf/80168_regulatory_analysis-2022.pdf) | 독립 한컴 PDF 157쪽; 직접 sweep 1,29,76-77,108-109쪽 | `7af457d9ec502132b1035582c16b1ba783e7faff71da0feef202690382bb1b95` |
+| [pdf/80168_regulatory_analysis-2022.pdf](../../../pdf/80168_regulatory_analysis-2022.pdf) | 독립 한컴 PDF 157쪽; 직접 sweep 1,21,29,49,75-77,108-109쪽 | `7af457d9ec502132b1035582c16b1ba783e7faff71da0feef202690382bb1b95` |
 | [samples/86712_regulatory_analysis.hwp](../../../samples/86712_regulatory_analysis.hwp) | 원 PR focused 계약에 사용한 기존 입력 | `32e2ed30e5d744ad747f04f090c022eca8270f9dd2d55e0613e2ad61058099e9` |
 | [samples/issue6031/3249937_asset_management_rules.hwpx](../../../samples/issue6031/3249937_asset_management_rules.hwpx) | 원 PR focused 계약에 사용한 기존 입력 | `97b5d6c571a6b7626321c6a53d797e3511978447497bb73309bd23eaa8e7ea77` |
+
+| 저장소 파일 | 역할 | SHA-256 |
+| --- | --- | --- |
+| [samples/76076_regulatory_analysis.hwp](../../../samples/76076_regulatory_analysis.hwp) | 76076 81쪽 잔여 대조 | `3308ba8505391bae2d0d62963e9399f4e48cdae574304cc0f89a311c6efbb6b5` |
+| [samples/issue1891/76076_regulatory_analysis-2024.pdf](../../../samples/issue1891/76076_regulatory_analysis-2024.pdf) | 76076 81쪽 잔여 대조 | `06a389455d6b96e5f6580c9930fd8555256f9c712be85fb3cdaf31fc601a090d` |
 
 OVR 공통 입력도 같은 확인 tree의 파일을 사용했다.
 
@@ -101,36 +139,41 @@ OVR 공통 입력도 같은 확인 tree의 파일을 사용했다.
 
 신규 자료 출처·변환 영수증은 [새 한컴 PDF manifest](../../../pdf/pr-planet6897-20260914/README.md),
 [transistor 원본·신고자 PDF](../../../tests/fixtures/issue_7105/README.md),
-[익명화 다단 원본](../../../tests/fixtures/issue_6970/README.md)에 보존했다. 신규 MCP 변환 6건은 engine 2020,
+[익명화 다단 원본](../../../tests/fixtures/issue_6970/README.md)에 보존했다. 앞선 검토에서 확보한 MCP 변환 6건은 engine 2020,
 Hancom 12.0.0.4605로 start → status(queued/running/succeeded) → download → SHA 확인까지 수행했다.
 신고자 transistor PDF는 Hancom 2022의 기존 11쪽 출력이며 새 MCP 출력으로 오인하지 않는다.
 인증 정보·임시 SVG/JSON·중간 로그는 커밋하지 않는다.
 
-## 검증 결과와 재현
 
-검증 코드 `48afe0f95abc4cd76b002dfc314f3cc044f10b31`와 최신 정렬 head의 Rust source·Cargo 입력은 동일하다. 추가 fixture commit은 원본/PDF 보존이며,
-나중에 들어온 upstream은 Studio Vite/@types/chrome 의존성과 기존 검토 문서만 변경했다.
-Rust 검증을 이 upstream 변경 후 재실행했다고 주장하지 않는다.
+## 최종 코드 검증
 
 | 검증 | 실제 결과 |
 | --- | --- |
-| fmt / generated manifest / unit tiers | 통과; 생성 suite는 stage하지 않음 |
-| focused nextest | 97 passed, 9800 skipped |
-| 전체 nextest | 9846 passed, 51 skipped; 실행 528.167초 |
-| Native Skia lib | 3930 + 15 + 165 + 2 passed, 13 ignored |
-| Native placeholder / direct PDF export | 2 / 4 passed |
-| Clippy native / wasm / workspace all-targets | 3종 통과, workspace build 통과 |
-| OVR 필수 5문서 | KTX 27, exam_math 20, 언어 기출 15, aift 74, biz_plan 6쪽; 개체 회귀 0 |
-| 새 WASM / 실제 Chrome | 빌드 성공; Chrome 152.0.7977.83에서 soil 1쪽, transistor 2쪽, table-text 1쪽, synth 1쪽을 열고 렌더. Native와 752/560/140/883 Text element 속성·텍스트 모두 동일 |
-| WASM 배포 빌드 제한 | Docker daemon 미가용으로 native wasm-pack `--no-opt` 사용. 표준 Docker/wasm-opt 배포 빌드 완료를 주장하지 않음 |
-| 원 PR CI | 위 source head의 Actions에 실패·대기 없음(성공/skip); 최신 통합 PR CI는 미실행 |
+| focused nextest | 105 tests run: 105 passed, 9800 skipped |
+| 전체 nextest | 9854 tests run: 9854 passed (2 slow), 51 skipped |
+| Native Skia lib | ok. 3930 passed; 0 failed; 13 ignored; 0 measured; 0 filtered out; finished in 23.42s; ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s; ok. 165 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s; ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s |
+| Native placeholder / direct PDF | 2 tests run: 2 passed, 196 skipped / 4 tests run: 4 passed, 189 skipped |
+| Clippy native / wasm / workspace | 통과 / 통과 / 통과 |
+| workspace build | 통과 |
+| manifest / unit tiers | 통과 / 통과 |
+| 새 WASM | 통과 |
+| OVR 필수 5문서 | 5개 exit 0; 개체 회귀 0 |
+| Visual Sweep | reg80168: 157쪽 중 6쪽 변경 / synth-no-lineseg: 3쪽 중 2쪽 변경 |
+
+WASM은 `wasm-pack-locked.sh --no-opt`로 새로 빌드한다. Docker daemon 미가용으로 표준 Docker/wasm-opt
+최적화 배포 빌드를 완료했다는 주장은 하지 않는다. OVR은 KTX/exam_math/언어기출/aift/biz_plan의
+**devel 대비 개체 회귀 검사**이며 한컴 동등성을 대신하지 않는다.
+첫 보정 head `9f3b1897c`에서도 9852/9852가 통과했지만 Sweep에서 추가 차이를 발견해 보정을 고쳤다.
+다음 head `fb1b46e23`의 9853개 통과 후에도 p76~77 잔여를 확인해 다시 보정했다.
+두 실행 결과를 현재 코드의 최종 검증으로 재사용하지 않는다.
+Native placeholder의 첫 개별 호출은 생성 suite 배치가 오래되어 0 tests / exit 4였으며 통과로 세지 않았다.
+`--prepare`로 생성물을 재정렬한 뒤 동일한 1304개 case 경로를 포함함을 확인하고 재실행했다.
+이미 통과한 전체 테스트의 source·case 집합은 바뀌지 않았다. 생성 harness는 커밋하지 않는다.
 
 ```sh
 cd /Users/tsjang/rhwp
 node scripts/rust-test-suite-manifest.mjs --prepare
 cargo fmt --all -- --check
-cargo build --locked --target-dir target/planet6897-review-20260914 --profile release-test --bin rhwp
-cargo nextest run --locked --target-dir target/planet6897-review-20260914 --cargo-profile release-test --tests --test-threads 6 --no-fail-fast -E 'test(/issue_4680|issue_7097|issue_6970|issue_7092|issue_7105|issue_7080|issue_7081|issue_7059|issue_7051|issue_7130|issue_3820_rowbreak_rowspan_band|issue_6590|issue_7084|issue_1285|svg_snapshot/)'
 cargo nextest run --locked --target-dir target/planet6897-review-20260914 --cargo-profile release-test --tests --test-threads 6 --no-fail-fast
 cargo test --locked --target-dir target/planet6897-review-20260914 --profile release-test --features native-skia --lib -- --test-threads 6
 node scripts/run-rust-test.mjs issue_2225_missing_picture_placeholder -- --cargo-profile release-test --locked --target-dir target/planet6897-review-20260914 --features native-skia
@@ -141,67 +184,9 @@ cargo build --locked --target-dir target/planet6897-review-20260914 --workspace
 cargo clippy --locked --target-dir target/planet6897-review-20260914 --workspace --all-targets -- -D warnings
 node scripts/rust-test-suite-manifest.mjs --check
 node scripts/rust-unit-test-tiers.mjs --check
-scripts/wasm-pack-locked.sh --target web --out-dir /private/tmp/rhwp-planet6897-review-20260914/pkg --no-opt
+CARGO_TARGET_DIR=target/planet6897-review-20260914 scripts/wasm-pack-locked.sh --target web --out-dir <외부-pkg-폴더> --no-opt
+venv/bin/python scripts/visual_sweep.py --wasm-pkg <새-WASM-web-package> --file-target <식별자> <Git-원본> <한컴-PDF> --rhwp-bin <검증-SHA-바이너리> --pages <검토-쪽> --dpi 96 --out <외부-산출-폴더>
 ```
 
-시각 재현 예시(실제 입력·PDF·페이지는 위 표):
-
-```sh
-venv/bin/python scripts/visual_sweep.py --file-target <식별자> <입력> <한컴-PDF> \
-  --rhwp-bin <해당-SHA에서-빌드한-rhwp> --pages <검토-쪽> --dpi 96 --out <외부-산출-폴더>
-```
-
-### 새 WASM browser 증적과 공통 시각 재현
-
-[soil 1쪽](../assets/pr7111_browser_wasm_soil.png),
-[transistor 2쪽](../assets/pr7113_browser_wasm_transistor.png),
-[table-text 1쪽](../assets/pr7117_browser_wasm_table-text.png),
-[synth 1쪽](../assets/pr7104_browser_wasm_synth.png)을 실제 Chrome에서 캡처했다.
-`HwpDocument(bytes).renderPageSvg(pageIndex)`와 `pageCount()`를 호출하고
-저장소 webfont projection으로 렌더했다. 정적 기존 pkg를 재사용하지 않았다.
-
-전수 문자/레이아웃 검사는 각 base/candidate 바이너리를 `RHWP_BIN`으로 지정해 아래 명령으로 실행했다.
-
-```sh
-RHWP_BIN=<해당-SHA-바이너리> venv/bin/python tools/fidelity_compare/fidelity_compare.py \
-  0 <마지막-0-based-쪽> --source <입력> --reference-pdf <한컴-PDF> \
-  --label <문서명> --reference-grade 'Hancom PDF' --text-only --export-all-svg \
-  --layout-ledger --out-dir <외부-산출-폴더>
-```
-
-OVR은 `tools/object_visual_regression.py`의 `PRESETS['ovr5']` 다섯 입력을 차례로 실행했다.
-module의 `RHWP`를 새 base/candidate 바이너리로, `git_head()`를 해당 검증 code SHA로 지정했다.
-각 입력은 base에서 `--no-hwp --save-baseline -o <base-folder>`, candidate에서
-`--no-hwp --baseline <base-folder>/baseline.json -o <candidate-folder>`로 호출했고 전부 exit 0이었다.
-이 실행은 **devel 대비 개체 회귀 검사**이며 한컴 PDF 동등성 검사를 대신하지 않는다.
-
-## 다음 조건과 merge 후 contributor PR comment 계획
-
-보류 해제 조건은 위 발견 사항의 원인 보정 또는 수용 가능한 독립 증거, 관련 focused·실물 PDF 재검증이다. 현재 묶음을 그대로 merge 대상으로 올리지 않는다.
-
-보정·범위 확정 후 최신 devel 정렬, 최신 code candidate Actions 통과, review·오늘할일 trailing 기록,
-최종 head Actions/mergeable 재확인과 작업지시자 merge 승인이 필요하다.
-원 source PR을 지금 close하거나 승인을 원격 게시하지 않는다.
-
-시각 근거를 사용한 PR은 [Visual Sweep 정본](../../manual/verification/visual_sweep_guide.md) direct link와
-위 실제 페이지·지표·사람 판정, `mydocs/pr/assets/`의 대표 PNG를 merge 후 comment에 포함한다.
-raw image 링크 형식은 `https://raw.githubusercontent.com/edwardkim/rhwp/<merge-commit-sha>/mydocs/pr/assets/<위-PNG>`다.
-merge SHA·devel asset 반영을 확인한 다음 승인된 범위에서 UTF-8 Markdown `--body-file`로 게시하고
-API로 본문·한글·고정 이미지 링크를 재확인한다. 이 문단은 게시 계획이며 게시 완료가 아니다.
-
-[적용·후속 단계](pr_7115_review_impl.md)
-
-## 단일 변수 음성 대조
-
-통합 code head에서 **`area_dot_fallback_width` 함수 하나만** 최초 devel의 구현으로 되돌렸다.
-다른 PR의 코드·입력·빌드 profile·feature는 같았다. release-test CLI build와 157쪽 SVG/render-tree export가 모두 exit 0이었다.
-
-| 관측 | 변경 전 devel | 통합 candidate | U+318D 함수만 rollback |
-| --- | --- | --- | --- |
-| 108쪽 오른쪽 셀 9번 | y=746.7 한 줄, `사항`까지 | y=746.7 `사`까지 + y=780.3 `항` | y=746.7 한 줄, `사항`까지 |
-| 3번 문장의 쪽·y | 108쪽 y=981.9 | 109쪽 y=109.9 + 143.5 | 108쪽 y=981.9 |
-
-따라서 이번 누적 변경에서 새 108→109쪽 이동은 #7115의 U+318D fallback 변경으로 유발됨을 단일 변수로 확인했다.
-음성 대조의 반각 값을 정식 해결책으로 채택하지 않았다. 한컴의 전각 glyph 폭과 저장 줄 소속을 함께 보존하는 보정이 필요하다.
-실험 후 source를 바이트 단위로 원복했다. 복구 전후 파일 SHA-256은
-`15e553a2e893cd0b30e9883d887ad3f3aa6b039b8b678570f8595cb910e4a964`로 같다.
+생성 suite, 임시 SVG/JSON, 중간 로그, 인증 정보는 커밋하지 않는다.
+[보정·후속 단계](pr_7115_review_impl.md)에 다음 절차를 기록한다.

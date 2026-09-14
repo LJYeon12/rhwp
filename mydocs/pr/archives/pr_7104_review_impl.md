@@ -5,53 +5,41 @@ canonical: mydocs/manual/pr_review_workflow.md
 last_verified: 2026-09-14
 ---
 
-# PR #7104 체리픽·검증·후속 계획
+# PR #7104 메인터너 보정·후속 단계
 
-[개별 review](pr_7104_review.md)의 판정은 **머지 보류**다. 통합 번호를 미리 만들지 않았으며
-원 저자의 commit·SHA를 `-x`로 보존했다. 이 계획은 local 검토 완료와 아직 하지 않은 원격 조치를 구분한다.
+[개별 review](pr_7104_review.md)의 현재 판정은 **보류 사유 해소 — 원 PR의 부분 개선 범위 수용**다.
 
-## 이미 적용한 commit
+## 적용 이력
 
-| 원 SHA | 로컬 SHA | 제목 |
-| --- | --- | --- |
-| `add3a01b4a786da31663cc35746576495a96d357` | `0eedc515e34ebdd0301edd9f6bd71c07013ea5e0` | 수정: 다단 합성 사다리 문단이 단 채움을 짧게 세어 단을 넘기지 않는다 (#6970) |
+- branch: `review/planet6897-20260914`
+- 기준: 최신 `upstream/devel` = local `devel` = `037e4906a93e99896daa145a5ee5517824bfeaf4`
+- source: `add3a01b4a786da31663cc35746576495a96d357` → rebase 후 `b9af4dc2377b27baa66e66d65f383a60dee6a2bd` (`-x`·원 저자 유지)
+- 메인터너 보정: `9f3b1897c + fb1b46e23`
+- 최종 검증 코드: `2f59c89373f497068f9a0bcb2c22730ec7dc7e51`
+- 입력/PDF: 기존 Git/LFS 파일 재사용; 보존 commit `ab3184254`
 
-기준 `93ffc3dd59c120bd54df4c2ac6d1ddbe630f8a2d` 위에서 PR 순서 7094 → 7100 → 7104 → 7111 → 7112 → 7113 → 7115 →
-7116 → 7117 → 7120 → 7131 → 7132로 누적했다. 이 PR의 마지막 local SHA는 `0eedc515e34ebdd0301edd9f6bd71c07013ea5e0`다.
-추가 fixture/PDF 보존은 `6933852a11b7e5998429eeb15708fdaeed7db626`, 최신 upstream 정렬 후 기록 기준은 `28d702d8f84bacb7ecec4f2a6dafd049e09bfcfa`다.
+## 해결한 원인과 확인
 
-## 보정과 규칙
+앞 단의 문단에 연결된 그림이 원본 수평 오프셋에 따라 다음 단에 놓여도, 단 전환에서 배제 영역이 지워졌다. 또한 NO_LS 일반 본문은 그 영역을 줄 채움에 전달하지 않았다.
 
-저장 사다리의 좌표 복원에 의존하는 trailing 간격 trim은 authoritative LineSeg에만 적용한다. 합성 사다리는 total_height를 실제 단 채움과 공유해야 한다.
+같은 물리 페이지에서는 그림 배제 영역을 단 사이에 보존하고 새 페이지에서는 비운다. 원본 NO_LS 그림의 문단 기준 좌표를 해석하고, 일반 본문의 frame이 만든 행과 높이를 fit와 paint가 함께 소비한다. 원본 IR의 LineSeg는 바꾸지 않는다. 빈 후속 lane은 다음 가시 글줄이 아니므로 마지막 제목을 양쪽 정렬로 벌리지 않는다.
 
-F1 [P2, 실물 증거]: 같은 3쪽이라는 사실로 #6970 시각 통과를 선언할 수 없다. 1쪽 Square 교차 후보는 1→3개다. candidate 그림 bbox (576.5,231.7,96.5,120.5)에 TextLine x=595.0이 들어온다. 한컴의 대응 그림은 x=575.9..672.2, 본문은 x=672.2 이후에서 감싸 돈다. 익명화로 그림 자체가 흰색이어도 물리 영역과 본문 흐름 계약은 남는다. 단 채움 수정과 그림 exclusion/페이지 소속 잔여를 분리해 추가 교차가 회귀가 아닌지 입증하거나 보정해야 한다.
+원본 첫 쪽 그림 pi=6/12/19의 bbox를 보존하면서 가로·세로 교집합이 각각 0.5px를 넘는 가시 TextLine 교차가 각각 4→0, 총 12→0이다. 종전 review의 1→3은 교차한 그림 개수이고 이 12는 교차한 글줄 개수다. 그림 3개와 본문을 유지했으며 BehindText 대조군에서는 겹침을 허용한다. 2쪽 제목 pi=88/93/99는 12pt 전각 자연 폭 64/32/48px를 유지한다.
 
-#7111의 text_measurement 충돌에서는 최신 supplemental_metrics와 신규 font_metric_trusted를 함께 남겼다.
-이외 생산 코드에 메인터너 수정은 추가하지 않았다. #7115 원인 확인용 임시 함수 rollback은 별도
-대조 바이너리에만 사용하고 검토 source를 바이트 단위로 복구했다. 정식 보정으로 세지 않는다.
+문서는 한컴과 같은 3쪽이지만 전체 시각 동등성을 뜻하지 않는다. 기존 제목·문단 페이지 소속 차이는 남는다. #6970 종료 근거로 사용하지 않는다. 새 clipping·좌표 clamp·fixture 허용치 완화로 교차를 감추지 않았다. Sweep의 square_wrap_text_overlap flag 자체는 1~2쪽에 남는다. 1쪽 pi=6/12/19는 본문 관통에서 edge_clearance_loss로 바뀌었고, 그림 오른쪽과 글줄 시작의 반올림 좌표 차이는 0.0/0.0/-0.1px다. 독립 PDF의 첫 그림도 오른쪽 경계와 본문 시작이 x=672.2px로 맞닿는다. 이를 관통 0건과 구분하며 Sweep 전체 flag=0으로 보고하지 않는다. 2쪽 pi=78/ci=2 그림의 기존 physical_overlap은 보정 전 4행에서 최종 3행으로 줄었으나 남는다. 이번 F1의 1쪽 추가 교차 보정과 구분하며, #6970 전체 해결을 위해 후속 검토해야 한다.
 
-## 단계와 실행 상태
+## 단계
 
-| 단계 | 상태 / 다음 작업 |
+| 단계 | 상태 |
 | --- | --- |
-| source inventory·최신 devel·reviewer | 완료; draft #7098 제외, reviewer jangster77; owner 자동 요청 없음 |
-| 16 commit 체리픽·충돌 보정 | 완료; 원 SHA·저자·적용 순서 위에 보존 |
-| 원본·한컴 PDF 확보 | 완료; Git 내 동일 SHA 재사용, 신규 자료만 별도 보존 commit |
-| focused/full/Native/Clippy/WASM/실물 sweep | 완료; 정확한 결과·제약은 review 참조 |
-| 발견 결함 처리 | #7104·#7113·#7115 보류. 원인 보정 또는 범위 분리 후 필요한 검사 재실행 |
-| 통합 PR | 아직 생성하지 않음. 준비가 확정되면 upstream 임시 head → devel; reviewer owner 자동 지정 안 함 |
-| CI와 trailing 기록 | 새 code candidate CI 통과 후 review·오늘할일을 동일 PR에 포함; source/fixture를 docs-only trailing에 섞지 않음 |
-| merge·원 PR/issue 후속 처리 | 최종 SHA·CI·MERGEABLE/CLEAN·승인 확인 후 수행. 원 PR comment에 통합 merge와 반영 SHA, 미해결 issue 범위를 남김 |
-| devel·cleanup | 실제 merge 후 devel 동기화. 실행 중 Cargo/Rust가 없는지 확인하고 전용 target만 post_merge 7.7.1에 따라 정리 |
+| upstream/devel 동기화·rebase | 완료; 원 18 commit 재적용, 충돌 없음, 이전 branch 백업 보존 |
+| 세 보류 항목 보정 | #7104 그림 배제/빈 lane, #7113 재귀·quoted literal, #7115 마지막 가시 행 공백 |
+| 로컬 검증·Visual Sweep | 보류 사유 해소 — 원 PR의 부분 개선 범위 수용; 정확한 결과·입력·PNG는 개별 review에 기록 |
+| 통합 PR | 아직 생성하지 않음. 준비 확정 후 upstream 임시 head → devel; owner 자동 reviewer 요청 없음 |
+| CI·trailing 기록 | 통합 code candidate CI 후 review·오늘할일 trailing 절차 적용. 이번 로컬 검증을 원격 CI로 표기하지 않음 |
+| merge·원 PR/issue 후속 | 최종 SHA·CI·MERGEABLE/CLEAN 및 승인 범위 확인 후 수행. 부분 이슈를 완료로 닫지 않음 |
+| devel·정리 | merge 후 동기화하고 실행 중 Rust/Cargo가 없는지 확인한 뒤 소유한 review target만 정리 |
 
-사용자 선택이 필요한 다음 범위는 발견 결함을 보정해 12개를 함께 진행할지, 보류 PR을 제외한 별도
-수용 묶음을 만들지다. 지금 reviewed history에서 임의로 source PR을 빼거나 원격에 게시하지 않았다.
-
-## rollback 경계
-
-현재 branch는 `review/planet6897-20260914`다. 작업공간은 공유하므로 reset/clean으로 다른 변경을 버리지 않는다.
-범위 분리가 승인되면 당시 최신 `upstream/devel`에서 새 branch를 만들고 이 표의 승인된 원 SHA와 필요한
-메인터너 보정만 순서대로 적용한다. 특히 #7111·#7112·#7115는 같은 측정 코드, #7115·#7117은
-form-002 golden을 공유하므로 중간 commit만 취소한 상태를 검증 결과로 재사용하지 않는다.
-
-[후속 처리 정본](../../manual/pr_review/post_merge.md)을 따른다.
+원 PR에 게시할 comment에는 반영 source SHA, 메인터너 보정, 통합 merge SHA, Visual Sweep 직접 링크와
+고정된 대표 PNG, 남은 이슈 범위를 포함한다. 현재 이 문서는 게시 완료 기록이 아니다.
+다른 작업의 변경을 reset/clean으로 버리지 않는다. [후속 처리 정본](../../manual/pr_review/post_merge.md)을 따른다.

@@ -5,53 +5,41 @@ canonical: mydocs/manual/pr_review_workflow.md
 last_verified: 2026-09-14
 ---
 
-# PR #7115 체리픽·검증·후속 계획
+# PR #7115 메인터너 보정·후속 단계
 
-[개별 review](pr_7115_review.md)의 판정은 **머지 보류**다. 통합 번호를 미리 만들지 않았으며
-원 저자의 commit·SHA를 `-x`로 보존했다. 이 계획은 local 검토 완료와 아직 하지 않은 원격 조치를 구분한다.
+[개별 review](pr_7115_review.md)의 현재 판정은 **보류 사유 해소 — 원 PR의 부분 개선 범위 수용**다.
 
-## 이미 적용한 commit
+## 적용 이력
 
-| 원 SHA | 로컬 SHA | 제목 |
-| --- | --- | --- |
-| `fa94b52a07de08af9d4320ab911caefa19e323dd` | `8a90acbabcfa3a1fe503b5a7a9b9dc8e88b74e65` | 수정: ㆍ(U+318D) 를 반각으로 박던 폴백을 전각으로 되돌린다 (#7080) |
+- branch: `review/planet6897-20260914`
+- 기준: 최신 `upstream/devel` = local `devel` = `037e4906a93e99896daa145a5ee5517824bfeaf4`
+- source: `fa94b52a07de08af9d4320ab911caefa19e323dd` → rebase 후 `0fb0d9345963471fe5bbceee0944ef854c5008aa` (`-x`·원 저자 유지)
+- 메인터너 보정: `b80db1a21 + 2f59c8937 (초기 5d35b37cc의 전역 공백 보정 철회)`
+- 최종 검증 코드: `2f59c89373f497068f9a0bcb2c22730ec7dc7e51`
+- 입력/PDF: 기존 Git/LFS 파일 재사용; 보존 commit `ab3184254`
 
-기준 `93ffc3dd59c120bd54df4c2ac6d1ddbe630f8a2d` 위에서 PR 순서 7094 → 7100 → 7104 → 7111 → 7112 → 7113 → 7115 →
-7116 → 7117 → 7120 → 7131 → 7132로 누적했다. 이 PR의 마지막 local SHA는 `8a90acbabcfa3a1fe503b5a7a9b9dc8e88b74e65`다.
-추가 fixture/PDF 보존은 `6933852a11b7e5998429eeb15708fdaeed7db626`, 최신 upstream 정렬 후 기록 기준은 `28d702d8f84bacb7ecec4f2a6dafd049e09bfcfa`다.
+## 해결한 원인과 확인
 
-## 보정과 규칙
+이전 review의 유효 저장 LineSeg 가설을 정정한다. 실제 원본은 section 0, 표 host pi=936, cell=3, p=9/13의 LineSeg가 없는 NO_LS 문단이다. 들여쓴 다줄 셀의 반각 공백 채움 규칙이 양쪽정렬 분배가 없는 마지막 한 줄에도 적용돼 문장 끝을 밀었다.
 
-U+318D의 fallback 전진폭은 독립 글꼴·한컴 출력에 따라 정해야 하며, 올바른 glyph 폭을 적용한 뒤에도 유효 저장 줄 소속과 페이지 경계를 보존해야 한다. 글자폭을 다시 줄여 페이지 차이를 숨기는 보정은 수용하지 않는다.
+동일한 frame 채움기로 현재 행 시작부터 글꼴 공백 후보를 계산하고, 남은 문단이 그 구간에서 끝나는 경우에만 후보 행·폭·높이를 함께 게시한다. 한 행 문단과 다줄 문단의 마지막 행에 공통 적용하며, 중간 행은 기존 반각 채움을 유지한다. 토큰 경계 재생은 이진 탐색으로 찾고, 커닝이 준비된 문단은 기존 폭 소유 경로를 유지한다. 원본 Justify와 NO_LS 들여쓰기 계약을 사용하며 파일명·쪽수·문자열 조건을 생산 코드에 넣지 않았다. 처음 시도한 전역 min(반각, 글꼴 공백) 보정은 49쪽을 과소 측정해 철회했다.
 
-F1 [P1, 실행 시각 회귀]: 80168 108쪽 오른쪽 셀의 `9. 그 밖에 시ㆍ도조례로 정하는 사항`이 두 줄이 되면서 이후 내용이 33.6px 아래로 밀린다. 표 bbox는 전후 x=75.6,y=107.6,w=640.4,h=910.0으로 동일하다. 한컴/변경 전의 108쪽 끝 `3. 그 밖에 시ㆍ도조례로 정하는 사항`이 candidate 109쪽 맨 위로 이동한다. 유효 저장 줄의 측정·배치/재조판 경계를 점검하고 해당 페이지 소속을 독립 PDF 회귀로 고정해야 한다. 76→77쪽 기존 차이도 커져 함께 검토 대상이다.
+독립 한컴 PDF p108의 9호와 마지막 3호가 각각 완전한 한 줄로 p108에 남는다. p75의 부대시설 조항은 한컴과 같은 3행 및 각 행의 전체 문자열을 검사한다. 그 마지막 다)가 별도 행으로 밀리지 않아 p76~77에 원 PR이 더한 한 줄을 제거한다. p49 대조군은 자산관리회사 조항의 줄끝 운 / 법 / 인과 총 3행을 유지한다. 전체 문서 페이지 수만으로 통과시키지 않고 Visual Sweep에서 해당 문장과 후속 내용을 직접 확인한다.
 
-#7111의 text_measurement 충돌에서는 최신 supplemental_metrics와 신규 font_metric_trusted를 함께 남겼다.
-이외 생산 코드에 메인터너 수정은 추가하지 않았다. #7115 원인 확인용 임시 함수 rollback은 별도
-대조 바이너리에만 사용하고 검토 source를 바이트 단위로 복구했다. 정식 보정으로 세지 않는다.
+76~77쪽은 원 PR 이전 base의 흐름으로 복구한 것이며 한컴 전체 일치가 아니다. p77의 이전 조항 2행 잔존, p109 상단 여백, 기존 글꼴·좌표 차이 및 76076 p81의 사고/사고를 차이는 별도 잔여다. 이 차이를 숨기기 위해 문서별 분기나 baseline 갱신을 추가하지 않았다.
 
-## 단계와 실행 상태
+## 단계
 
-| 단계 | 상태 / 다음 작업 |
+| 단계 | 상태 |
 | --- | --- |
-| source inventory·최신 devel·reviewer | 완료; draft #7098 제외, reviewer jangster77; owner 자동 요청 없음 |
-| 16 commit 체리픽·충돌 보정 | 완료; 원 SHA·저자·적용 순서 위에 보존 |
-| 원본·한컴 PDF 확보 | 완료; Git 내 동일 SHA 재사용, 신규 자료만 별도 보존 commit |
-| focused/full/Native/Clippy/WASM/실물 sweep | 완료; 정확한 결과·제약은 review 참조 |
-| 발견 결함 처리 | #7104·#7113·#7115 보류. 원인 보정 또는 범위 분리 후 필요한 검사 재실행 |
-| 통합 PR | 아직 생성하지 않음. 준비가 확정되면 upstream 임시 head → devel; reviewer owner 자동 지정 안 함 |
-| CI와 trailing 기록 | 새 code candidate CI 통과 후 review·오늘할일을 동일 PR에 포함; source/fixture를 docs-only trailing에 섞지 않음 |
-| merge·원 PR/issue 후속 처리 | 최종 SHA·CI·MERGEABLE/CLEAN·승인 확인 후 수행. 원 PR comment에 통합 merge와 반영 SHA, 미해결 issue 범위를 남김 |
-| devel·cleanup | 실제 merge 후 devel 동기화. 실행 중 Cargo/Rust가 없는지 확인하고 전용 target만 post_merge 7.7.1에 따라 정리 |
+| upstream/devel 동기화·rebase | 완료; 원 18 commit 재적용, 충돌 없음, 이전 branch 백업 보존 |
+| 세 보류 항목 보정 | #7104 그림 배제/빈 lane, #7113 재귀·quoted literal, #7115 마지막 가시 행 공백 |
+| 로컬 검증·Visual Sweep | 보류 사유 해소 — 원 PR의 부분 개선 범위 수용; 정확한 결과·입력·PNG는 개별 review에 기록 |
+| 통합 PR | 아직 생성하지 않음. 준비 확정 후 upstream 임시 head → devel; owner 자동 reviewer 요청 없음 |
+| CI·trailing 기록 | 통합 code candidate CI 후 review·오늘할일 trailing 절차 적용. 이번 로컬 검증을 원격 CI로 표기하지 않음 |
+| merge·원 PR/issue 후속 | 최종 SHA·CI·MERGEABLE/CLEAN 및 승인 범위 확인 후 수행. 부분 이슈를 완료로 닫지 않음 |
+| devel·정리 | merge 후 동기화하고 실행 중 Rust/Cargo가 없는지 확인한 뒤 소유한 review target만 정리 |
 
-사용자 선택이 필요한 다음 범위는 발견 결함을 보정해 12개를 함께 진행할지, 보류 PR을 제외한 별도
-수용 묶음을 만들지다. 지금 reviewed history에서 임의로 source PR을 빼거나 원격에 게시하지 않았다.
-
-## rollback 경계
-
-현재 branch는 `review/planet6897-20260914`다. 작업공간은 공유하므로 reset/clean으로 다른 변경을 버리지 않는다.
-범위 분리가 승인되면 당시 최신 `upstream/devel`에서 새 branch를 만들고 이 표의 승인된 원 SHA와 필요한
-메인터너 보정만 순서대로 적용한다. 특히 #7111·#7112·#7115는 같은 측정 코드, #7115·#7117은
-form-002 golden을 공유하므로 중간 commit만 취소한 상태를 검증 결과로 재사용하지 않는다.
-
-[후속 처리 정본](../../manual/pr_review/post_merge.md)을 따른다.
+원 PR에 게시할 comment에는 반영 source SHA, 메인터너 보정, 통합 merge SHA, Visual Sweep 직접 링크와
+고정된 대표 PNG, 남은 이슈 범위를 포함한다. 현재 이 문서는 게시 완료 기록이 아니다.
+다른 작업의 변경을 reset/clean으로 버리지 않는다. [후속 처리 정본](../../manual/pr_review/post_merge.md)을 따른다.
