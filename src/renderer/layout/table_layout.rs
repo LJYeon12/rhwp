@@ -15517,17 +15517,139 @@ impl LayoutEngine {
         extra
     }
 
-    /// [Task #993 / #1022] 분할 행에서 컷 범위 `[start_cut, end_cut)` 사이의
-    /// **행 총 높이**(패딩 포함)를 반환한다. HeightMeasurer 와 정합 — 셀별로
-    /// `max(cell.height, content + pad_cell)` 를 산출해 행 max.
-    ///
-    /// - 분할 아닌 행(start_cut/end_cut 모두 빈 Vec): `max(cell.height,
-    ///   content+pad_cell)` per cell, row max.
-    /// - 분할 행(컷 범위 일부): `content_in_range + pad_cell` per cell, row max.
-    ///   분할 시 cell.height 강제는 적용하지 않는다(콘텐츠가 부분이므로).
-    ///
-    /// 셀 인덱스는 `advance_row_cut` 과 동일하게 `row_span==1` 셀을 col
-    /// 오름차순 정렬한 순서다.
+    /// RowBreak/CellBreak의 경계 rowspan 셀이 소유하는 유닛 범위.
+    /// 높이 예약과 실제 셀 배치가 시작 컷 및 native 저장 문단 owner를 함께 사용한다.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn rowbreak_straddle_cut_units(
+        &self,
+        table: &crate::model::table::Table,
+        cell: &crate::model::table::Cell,
+        start_row: usize,
+        end_row: usize,
+        start_cut: &[usize],
+        start_row_height_override: Option<f64>,
+        end_cut_is_empty: bool,
+        cell_height: f64,
+        resolved_row_heights: &[f64],
+        styles: &ResolvedStyleSet,
+    ) -> (usize, usize) {
+        let cell_row = cell.row as usize;
+        let cell_end = cell_row + cell.row_span as usize;
+        let straddles_start = cell_row < start_row && cell_end > start_row;
+        let straddles_end = cell_row < end_row
+            && (cell_end > end_row || (cell_end == end_row && !end_cut_is_empty));
+        // HWP5 저장 pagination의 2행/2문단 계약에서는 문단 하나가 행 하나의 owner다.
+        if start_cut.is_empty()
+            && start_row_height_override.is_none()
+            && end_cut_is_empty
+            && ((straddles_start && start_row == cell_row + 1)
+                || (straddles_end && end_row == cell_row + 1))
+            && self.native_two_row_rowspan_paragraph_owner_boundary(cell, table, styles)
+        {
+            return (
+                usize::from(straddles_start),
+                if straddles_end { 1 } else { usize::MAX },
+            );
+        }
+        let cell_spacing = hwpunit_to_px(table.cell_spacing as i32, self.dpi);
+        let padding = cell.effective_padding(&table.padding);
+        let pad_top = hwpunit_to_px(padding.top as i32, self.dpi);
+        let mut prior_h = 0.0;
+        if straddles_start {
+            for r in cell_row..start_row {
+                let has_single_row_cells = table
+                    .cells
+                    .iter()
+                    .any(|c| c.row as usize == r && c.row_span == 1);
+                let declared = resolved_row_heights.get(r).copied().unwrap_or(0.0);
+                let measured = if has_single_row_cells {
+                    self.row_cut_content_height(table, r, &[], &[], styles)
+                } else {
+                    0.0
+                };
+                prior_h += if measured > 0.0 { measured } else { declared };
+                prior_h += cell_spacing;
+            }
+            if let Some(remaining_band) = start_row_height_override {
+                // 내용 컷으로는 이미 소비한 물리 빈 밴드를 알 수 없다. 앞 조각이
+                // 남긴 정확한 행 높이로 소비 구간을 복원해 앞 조각 eu와 이어준다.
+                prior_h += (resolved_row_heights.get(start_row).copied().unwrap_or(0.0)
+                    - remaining_band)
+                    .max(0.0);
+            } else if !start_cut.is_empty() {
+                prior_h += self.row_cut_content_height(table, start_row, &[], start_cut, styles);
+            }
+        }
+        let su = if prior_h > 0.0 {
+            self.cell_units_fitting_height(cell, table, styles, prior_h - pad_top)
+        } else {
+            0
+        };
+        let eu = if straddles_end {
+            self.cell_units_fitting_height(cell, table, styles, prior_h + cell_height - pad_top)
+                .max(su)
+        } else {
+            usize::MAX
+        };
+        (su, eu)
+    }
+
+    /// 시작 경계를 걸친 셀의 마지막 행을 온전히 배치할 때 필요한 조각 높이.
+    /// 끝 컷이 있으면 남은 유닛 전부를 받지 않으므로 그 셀의 증분 예약은 제외한다.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn straddle_continuation_demand(
+        &self,
+        table: &crate::model::table::Table,
+        row: usize,
+        start_row: usize,
+        start_cut: &[usize],
+        start_row_height_override: Option<f64>,
+        resolved_row_heights: &[f64],
+        styles: &ResolvedStyleSet,
+        fragment_end: (usize, bool),
+    ) -> Option<f64> {
+        if start_row == 0
+            || !matches!(
+                table.page_break,
+                crate::model::table::TablePageBreak::RowBreak
+                    | crate::model::table::TablePageBreak::CellBreak
+            )
+        {
+            return None;
+        }
+        let (end_row, end_cut_is_empty) = fragment_end;
+        table
+            .cells
+            .iter()
+            .filter(|cell| {
+                let cell_row = cell.row as usize;
+                let cell_end = cell_row + cell.row_span as usize;
+                cell.row_span > 1
+                    && cell_row < start_row
+                    && cell_end > start_row
+                    && cell_end == row + 1
+                    && (cell_end < end_row || (cell_end == end_row && end_cut_is_empty))
+            })
+            .map(|cell| {
+                let (su, eu) = self.rowbreak_straddle_cut_units(
+                    table,
+                    cell,
+                    start_row,
+                    end_row,
+                    start_cut,
+                    start_row_height_override,
+                    end_cut_is_empty,
+                    0.0,
+                    resolved_row_heights,
+                    styles,
+                );
+                // 보이는 내용과 상하 패딩이 이미 포함된 높이다.
+                self.cell_cut_visible_height(cell, table, styles, su, eu)
+            })
+            .reduce(f64::max)
+    }
+
+    /// 분할 행의 컷 범위에 속하는 내용과 셀 패딩의 높이. 온전한 행은 선언 높이도 보존한다.
     pub(crate) fn row_cut_content_height(
         &self,
         table: &crate::model::table::Table,
