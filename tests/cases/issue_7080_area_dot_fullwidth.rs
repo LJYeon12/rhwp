@@ -197,3 +197,44 @@ fn issue_7080_multiline_statute_keeps_hancom_page_49_three_rows() {
         ]
     );
 }
+
+/// p75의 다줄 문단 마지막 `다)`를 별도 줄로 밀어 p76~77을 늘리지 않는다.
+#[test]
+fn issue_7080_multiline_terminal_row_does_not_push_the_next_page() {
+    use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
+    fn collect(node: &RenderNode, lines: &mut Vec<String>) {
+        if let RenderNodeType::TextLine(line) = &node.node_type {
+            if line.para_index == Some(2) && node.bbox.x > 390.0 && node.bbox.y > 300.0 {
+                lines.push(
+                    node.children
+                        .iter()
+                        .filter_map(|c| match &c.node_type {
+                            RenderNodeType::TextRun(run) => Some(run.text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<String>(),
+                );
+            }
+        }
+        for child in &node.children {
+            collect(child, lines);
+        }
+    }
+    let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLE_80168)).unwrap();
+    let core = DocumentCore::from_bytes(&bytes).unwrap();
+    let mut lines = Vec::new();
+    collect(&core.build_page_render_tree(74).unwrap().root, &mut lines);
+    let compact: Vec<String> = lines
+        .iter()
+        .map(|line| line.split_whitespace().collect())
+        .collect();
+    assert_eq!(
+        compact,
+        [
+            "2.건축물이아닌부대시설ㆍ복리",
+            "시설의설치규모를확대하는때",
+            "(위치가변경되는경우는제외한다)"
+        ],
+        "한컴 p75의 부대시설 조항과 같은 3행을 보존한다"
+    );
+}

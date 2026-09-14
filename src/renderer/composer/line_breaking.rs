@@ -1413,6 +1413,22 @@ impl FillCursor {
             emitted_any: false,
         }
     }
+
+    fn replay_from_boundary(tokens: &[BreakToken], boundary: usize, first_line: bool) -> Self {
+        let mut cursor = Self::new(boundary, first_line);
+        cursor.token_index = tokens.partition_point(|token| match token {
+            BreakToken::Text { end_idx, .. } => *end_idx <= boundary,
+            BreakToken::Space { idx, .. }
+            | BreakToken::Tab { idx, .. }
+            | BreakToken::LineBreak { idx } => *idx < boundary,
+        });
+        if let Some(BreakToken::Text { start_idx, .. }) = tokens.get(cursor.token_index) {
+            if boundary > *start_idx {
+                cursor.fallback_char_idx = Some(boundary);
+            }
+        }
+        cursor
+    }
 }
 
 /// Fill all scalar intervals through the resumable greedy continuation.
@@ -2630,28 +2646,7 @@ pub(crate) fn layout_paragraph_in_frame(
     styles: &ResolvedStyleSet,
     dpi: f64,
 ) -> Option<Vec<LineSeg>> {
-    // 마지막 한 줄은 양쪽정렬 공백 분배 대상이 아니다. 글꼴 고유 공백으로
-    // 문단 전체가 한 행에 들어가면 그 확정 frame을 그대로 사용한다 (#7115).
-    // 들여쓴 다줄 셀의 반각 채움은 유지한다: 고유 공백을 전역 적용하면
-    // 80168 p49의 3행을 2행으로 과소 측정한다. p108의 9호/3호는 한 행이다.
-    if super::missing_lineseg_indented_cell_has_uniform_metrics_with_tracking(para, styles)
-        && styles
-            .para_styles
-            .get(para.para_shape_id as usize)
-            .is_some_and(|style| style.alignment == crate::model::style::Alignment::Justify)
-        && !para.text.contains(['\n', '\r', '\t'])
-    {
-        let mut candidate = frame.clone();
-        if let Some(rows) =
-            layout_paragraph_in_frame_impl(para, &mut candidate, styles, dpi, true, true)
-        {
-            if rows.len() == 1 {
-                *frame = candidate;
-                return Some(rows);
-            }
-        }
-    }
-    layout_paragraph_in_frame_impl(para, frame, styles, dpi, true, false)
+    layout_paragraph_in_frame_impl(para, frame, styles, dpi, true)
 }
 
 fn layout_paragraph_in_frame_impl(
@@ -2660,7 +2655,6 @@ fn layout_paragraph_in_frame_impl(
     styles: &ResolvedStyleSet,
     dpi: f64,
     allow_kerning: bool,
-    font_space_candidate: bool,
 ) -> Option<Vec<LineSeg>> {
     // [#6102] 폭-중립 자리차지 표 host 도 fill 대상 — 표는 줄 폭을 소비하지
     // 않으므로(자기 레이아웃 소유자가 따로 배치) 텍스트만 재래핑하면 된다.
@@ -2693,13 +2687,12 @@ fn layout_paragraph_in_frame_impl(
     // 두어, 저장 `LINE_SEG` 가 없는 들여쓴 셀 문단도 글꼴 고유 공백 폭으로 쟀다.
     // 실측: `76076_regulatory_analysis.hwp` 에서 이 술어를 만족하는 문단이 74 개고,
     // 그 전부가 이 경로로 들어온다.
-    let space_metric = if !font_space_candidate
-        && super::missing_lineseg_indented_cell_has_uniform_metrics_with_tracking(para, styles)
-    {
-        SpaceMetric::HalfCell
-    } else {
-        SpaceMetric::Stored
-    };
+    let space_metric =
+        if super::missing_lineseg_indented_cell_has_uniform_metrics_with_tracking(para, styles) {
+            SpaceMetric::HalfCell
+        } else {
+            SpaceMetric::Stored
+        };
     let mut tokens = tokenize_paragraph_with_regenerated_space_metric(
         &text_chars,
         &para.char_offsets,
@@ -2730,6 +2723,27 @@ fn layout_paragraph_in_frame_impl(
             kerning_transaction.as_mut()?,
         )
         .ok()
+    });
+    // 양쪽정렬의 마지막 가시 줄은 공백 분배 대상이 아니다. 들여쓴 셀의
+    // 중간 줄은 기존 반각 채움을 유지하고, 남은 문단 전체가 현재 구간에
+    // 들어가는 마지막 줄만 글꼴 공백으로 확정한다. 첫 줄에만 한정하면
+    // 다줄 문단 끝의 불필요한 줄바꿈과 다음 페이지 밀림이 남는다.
+    // 커닝은 별도 paragraph transaction이 폭을 소유하므로 그 경로는 유지한다.
+    let terminal_tokens = (space_metric == SpaceMetric::HalfCell
+        && prepared_kerning.is_none()
+        && para_style
+            .is_some_and(|style| style.alignment == crate::model::style::Alignment::Justify))
+    .then(|| {
+        tokenize_paragraph_with_regenerated_space_metric(
+            &text_chars,
+            &para.char_offsets,
+            &para.char_shapes,
+            styles,
+            english_break_unit,
+            korean_break_unit,
+            SpaceMetric::Stored,
+            &inline_controls,
+        )
     });
     let letter_spacing_px =
         resolved_letter_spacing_px(&text_chars, &para.char_offsets, &para.char_shapes, styles);
@@ -2827,18 +2841,44 @@ fn layout_paragraph_in_frame_impl(
                         interval.end.saturating_sub(interval.start),
                         dpi,
                     );
-                    let filled = fill_one_interval(
-                        &tokens,
-                        &text_chars,
-                        available_width_px,
-                        indent_px,
-                        default_tab_width,
-                        korean_break_unit,
-                        condense_min_space,
-                        &letter_spacing_px,
-                        &mut cursor,
-                        kerning_break_session.as_mut(),
-                    )?;
+                    let terminal = terminal_tokens.as_ref().and_then(|terminal_tokens| {
+                        let mut replay = FillCursor::replay_from_boundary(
+                            terminal_tokens,
+                            cursor.line_start_idx,
+                            cursor.is_first_line,
+                        );
+                        let filled = fill_one_interval(
+                            terminal_tokens,
+                            &text_chars,
+                            available_width_px,
+                            indent_px,
+                            default_tab_width,
+                            korean_break_unit,
+                            condense_min_space,
+                            &letter_spacing_px,
+                            &mut replay,
+                            None,
+                        )?;
+                        (filled.termination == FillTermination::ParagraphEnd)
+                            .then_some((filled, replay))
+                    });
+                    let filled = if let Some((filled, replay)) = terminal {
+                        cursor = replay;
+                        filled
+                    } else {
+                        fill_one_interval(
+                            &tokens,
+                            &text_chars,
+                            available_width_px,
+                            indent_px,
+                            default_tab_width,
+                            korean_break_unit,
+                            condense_min_space,
+                            &letter_spacing_px,
+                            &mut cursor,
+                            kerning_break_session.as_mut(),
+                        )?
+                    };
                     let line = &filled.line;
                     maximum_font_size = maximum_font_size.max(line.max_font_size);
                     for control in inline_controls.iter().filter(|control| {
@@ -2931,14 +2971,7 @@ fn layout_paragraph_in_frame_impl(
     if kerning_failed {
         // 한 boundary라도 예산/범위 검증에 실패하면 일부 K1 row를 게시하지
         // 않고 문단 전체를 원래 scalar transaction으로 다시 실행한다.
-        return layout_paragraph_in_frame_impl(
-            para,
-            frame,
-            styles,
-            dpi,
-            false,
-            font_space_candidate,
-        );
+        return layout_paragraph_in_frame_impl(para, frame, styles, dpi, false);
     }
     result
 }
