@@ -299,6 +299,13 @@ export class WasmBridge {
 
   invalidateCanvasMetricFonts(): void {
     this.canvasFontGeneration += 1;
+    this.invalidateCanvasMetrics();
+  }
+
+  get canvasMetricFontGeneration(): number { return this.canvasFontGeneration; }
+
+  /** Discard suspect measurements without manufacturing an external font change. */
+  invalidateCanvasMetrics(): void {
     this.canvasMetrics.invalidate();
     this.canvasMetricDocument()?.selectCanvasMetrics(false);
   }

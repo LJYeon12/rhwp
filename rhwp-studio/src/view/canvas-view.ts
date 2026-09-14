@@ -1,4 +1,5 @@
 import { WasmBridge } from '@/core/wasm-bridge';
+import { CanvasMetricRecovery } from '@/core/canvas-metric-recovery';
 import { EventBus } from '@/core/event-bus';
 import type { PageInfo } from '@/core/types';
 import { VirtualScroll } from './virtual-scroll';
@@ -144,6 +145,7 @@ export class CanvasView {
   private textEditStaticLayerVerifyTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private rendererSelectionEpoch = 0;
   private rendererFallbackScheduled = false;
+  private canvasMetricRecovery = new CanvasMetricRecovery();
   private activeRendererDecisionKey: string | null = null;
   private autoRendererReselectionTimer: ReturnType<typeof setTimeout> | null = null;
   private documentLoadPrepared = false;
@@ -1645,6 +1647,8 @@ export class CanvasView {
       this.removeGridOverlay(pageIdx);
       if (this.pageRenderer.getBackend() === 'canvaskit' && rendererDecisionKey) {
         this.scheduleCanvasKitFallback(e, rendererDecisionKey, 'resource');
+      } else if (this.pageRenderer.getBackend() === 'canvas2d') {
+        this.scheduleCanvasMetricRecovery(e);
       }
       return false;
     }
@@ -1679,6 +1683,29 @@ export class CanvasView {
       this.cancelTextEditStaticLayerVerification(pageIdx);
     }
     return true;
+  }
+
+  private scheduleCanvasMetricRecovery(error: unknown): void {
+    const documentGeneration = this.wasm.documentGeneration;
+    const fontGeneration = this.wasm.canvasMetricFontGeneration;
+    const epoch = this.rendererSelectionEpoch;
+    const isCurrent = (): boolean => !this.disposed
+      && epoch === this.rendererSelectionEpoch
+      && documentGeneration === this.wasm.documentGeneration
+      && fontGeneration === this.wasm.canvasMetricFontGeneration
+      && this.pageRenderer.getBackend() === 'canvas2d';
+    void this.canvasMetricRecovery.recover(error, {
+      key: `${documentGeneration}:${fontGeneration}`,
+      isCurrent,
+      invalidate: () => this.wasm.invalidateCanvasMetrics(),
+      prepare: guard => this.wasm.prepareCanvasMetrics('canvas2d', guard),
+      repaint: () => {
+        this.pageRenderer.invalidateDocumentRevision();
+        this.refreshPages();
+        this.eventBus.emit('document-layout-refreshed', { source: 'canvas-metrics' });
+      },
+      report: failure => console.error('[CanvasView] Canvas metrics 재준비 실패:', failure),
+    });
   }
 
   private scheduleCanvasKitFallback(
