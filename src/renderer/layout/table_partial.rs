@@ -308,7 +308,8 @@ impl CellComposedStore {
             CellComposedStore::Lazy(slots) => {
                 if slots[cpi].is_none() {
                     let para = &cell.paragraphs[cpi];
-                    let mut comp = compose_paragraph(para);
+                    let mut comp =
+                        crate::renderer::composer::compose_paragraph_in_context(para, styles);
                     if cell.text_direction == 0 {
                         crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
                             &mut comp,
@@ -806,7 +807,13 @@ impl LayoutEngine {
         if !split_proven {
             for (i, &(s, e)) in ranges.iter().enumerate() {
                 if s == 0 && e == 0 && (i < pmin || i > pmax) {
-                    if compose_paragraph(&cell.paragraphs[i]).lines.is_empty() {
+                    if crate::renderer::composer::compose_paragraph_in_context(
+                        &cell.paragraphs[i],
+                        styles,
+                    )
+                    .lines
+                    .is_empty()
+                    {
                         continue;
                     }
                     split_proven = true;
@@ -1176,7 +1183,7 @@ impl LayoutEngine {
                 let mut composed_paras: Vec<_> = cell
                     .paragraphs
                     .iter()
-                    .map(|p| compose_paragraph(p))
+                    .map(|p| crate::renderer::composer::compose_paragraph_in_context(p, styles))
                     .collect();
 
                 // 텍스트 오버플로우 시 좌우 패딩 축소
@@ -3008,11 +3015,7 @@ impl LayoutEngine {
                                         for line in &composed.lines {
                                             for run in &line.runs {
                                                 if !run.text.is_empty() {
-                                                    let ts = resolved_to_text_style(
-                                                        styles,
-                                                        run.char_style_id,
-                                                        run.lang_index,
-                                                    );
+                                                    let ts = run.text_style(styles);
                                                     text_w += estimate_text_width(&run.text, &ts);
                                                 }
                                             }

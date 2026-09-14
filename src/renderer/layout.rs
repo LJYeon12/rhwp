@@ -4348,7 +4348,7 @@ impl LayoutEngine {
                 }
             } else if has_picture {
                 // Picture 컨트롤이 있는 문단
-                let comp = self.compose_header_footer_paragraph(para, page_number);
+                let comp = self.compose_header_footer_paragraph(para, page_number, styles);
                 if comp.tac_controls.is_empty() {
                     // 머리말/꼬리말 내 Picture: header/footer area 기준 배치
                     for (ci, ctrl) in para.controls.iter().enumerate() {
@@ -4425,7 +4425,7 @@ impl LayoutEngine {
                     .any(|c| matches!(c, Control::Shape(s) if s.common().treat_as_char));
                 let hf_shape_section = usize::MAX;
                 if has_tac_shape {
-                    let comp = self.compose_header_footer_paragraph(para, page_number);
+                    let comp = self.compose_header_footer_paragraph(para, page_number, styles);
                     self.layout_paragraph(
                         tree,
                         area_node,
@@ -4465,7 +4465,7 @@ impl LayoutEngine {
                 }
                 // 텍스트도 함께 렌더링 (TAC 도형 경로는 위에서 이미 문단을 레이아웃함)
                 if !has_tac_shape && !para.text.is_empty() {
-                    let comp = self.compose_header_footer_paragraph(para, page_number);
+                    let comp = self.compose_header_footer_paragraph(para, page_number, styles);
                     y_offset = self.layout_paragraph(
                         tree,
                         area_node,
@@ -4483,7 +4483,7 @@ impl LayoutEngine {
                 }
             } else {
                 // 일반 텍스트 문단 레이아웃 (필드 마커 치환 포함)
-                let comp = self.compose_header_footer_paragraph(para, page_number);
+                let comp = self.compose_header_footer_paragraph(para, page_number, styles);
                 y_offset = self.layout_paragraph(
                     tree,
                     area_node,
@@ -4509,8 +4509,9 @@ impl LayoutEngine {
         &self,
         para: &Paragraph,
         page_number: u32,
+        styles: &ResolvedStyleSet,
     ) -> ComposedParagraph {
-        let mut comp = compose_paragraph(para);
+        let mut comp = crate::renderer::composer::compose_paragraph_in_context(para, styles);
         self.substitute_hf_field_markers(&mut comp, page_number);
         if para.controls.iter().any(|ctrl| {
             matches!(ctrl, Control::AutoNumber(an)
@@ -5358,7 +5359,8 @@ impl LayoutEngine {
                         }
                     } else if !para.text.is_empty() {
                         // 컨트롤 없는 텍스트 문단: vpos 기반 y 위치 사용
-                        let mut comp = compose_paragraph(para);
+                        let mut comp =
+                            crate::renderer::composer::compose_paragraph_in_context(para, styles);
                         self.substitute_hf_field_markers(&mut comp, page_number);
                         // 바탕쪽 탭은 레이아웃 위치 지정용이므로 탭 리더를 그리지 않음
                         comp.tab_extended.clear();
@@ -14469,7 +14471,7 @@ impl LayoutEngine {
                 .runs
                 .iter()
                 .map(|r| {
-                    let ts = resolved_to_text_style(styles, r.char_style_id, r.lang_index);
+                    let ts = r.text_style(styles);
                     if ts.font_size > 0.0 {
                         ts.font_size
                     } else {
@@ -14569,7 +14571,7 @@ impl LayoutEngine {
         let mut tac_pos = 0usize;
 
         'outer: for run in &first_line.runs {
-            let mut ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+            let mut ts = run.text_style(styles);
             ts.default_tab_width = tab_width;
             ts.tab_stops = tab_stops.clone();
             ts.auto_tab_right = auto_tab_right;
@@ -14718,7 +14720,7 @@ fn compute_tac_leading_width(
     let mut width = 0.0;
     for run in &first_line.runs {
         let run_len = run.text.chars().count();
-        let style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+        let style = run.text_style(styles);
         // [Task #555] PUA 옛한글 변환 후 폰트 매트릭스는 자모 시퀀스 기준.
         let effective_full = effective_text_for_metrics(run);
         match tac_pos_opt {

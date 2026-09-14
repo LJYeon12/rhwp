@@ -3,7 +3,7 @@ use super::DocumentCore;
 use crate::model::{control::Control, paragraph::Paragraph, shape::ShapeObject};
 use crate::renderer::{
     canvas_text_font::CanvasTextFont,
-    composer::compose_paragraph,
+    composer::compose_paragraph_for_metric_requests,
     layout::{resolved_to_text_style, trace_char_width_decisions},
     supplemental_metrics::{
         MetricContext, MetricError, SupplementalMetric, MAX_SUPPLEMENTAL_ENTRIES,
@@ -61,20 +61,17 @@ impl Collector<'_> {
     fn paragraphs(&mut self, paragraphs: &[Paragraph], depth: usize) -> Result<(), MetricError> {
         for para in paragraphs {
             self.budget(1 + para.text.len() + para.controls.len(), depth)?;
-            for line in compose_paragraph(para).lines {
+            for line in compose_paragraph_for_metric_requests(para).lines {
                 for run in line.runs {
                     // Markers/overlap have their own paint contracts, not ordinary text.
                     if run.footnote_marker.is_some()
                         || run.char_overlap.is_some()
                         || run.display_text.is_some()
+                        || run.supplemental_metrics_blocked
                     {
                         continue;
                     }
-                    let mut style = resolved_to_text_style(
-                        &self.core.styles,
-                        run.char_style_id,
-                        run.lang_index,
-                    );
+                    let mut style = run.text_style(&self.core.styles);
                     style.supplemental_metrics = None;
                     let decisions = trace_char_width_decisions(&run.text, &style);
                     let mut index = 0;

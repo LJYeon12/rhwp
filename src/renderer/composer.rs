@@ -43,7 +43,23 @@ pub struct ComposedTextRun {
     /// `text` 는 IR 와 동일하게 PUA char 1글자로 보존하여 char_offsets /
     /// char_start / line_chars 등 인덱싱 불변성을 유지한다 (Task #528).
     pub display_text: Option<String>,
+    /// Logical paragraph grapheme membership, not a font/style heuristic.
+    pub supplemental_metrics_blocked: bool,
+    /// Text inserted from a control payload, not a scalar span of Paragraph.text.
+    pub inserted_control_text: bool,
 }
+
+impl ComposedTextRun {
+    pub(crate) fn text_style(&self, styles: &ResolvedStyleSet) -> TextStyle {
+        let mut style = resolved_to_text_style(styles, self.char_style_id, self.lang_index);
+        if self.supplemental_metrics_blocked {
+            style.supplemental_metrics = None;
+        }
+        style
+    }
+}
+
+pub(crate) mod supplemental_clusters;
 
 /// 구성된 줄 (LineSeg 기반)
 #[derive(Debug, Clone)]
@@ -315,6 +331,26 @@ fn synthesize_marker_paragraph(para: &Paragraph) -> Option<Paragraph> {
 
 /// 문단을 줄별 텍스트 런으로 분할한다.
 pub fn compose_paragraph(para: &Paragraph) -> ComposedParagraph {
+    compose_paragraph_scoped(para, false, None)
+}
+
+/// Supplemental width contexts may subdivide a nominal run; portable composition must not.
+pub(crate) fn compose_paragraph_in_context(
+    para: &Paragraph,
+    styles: &ResolvedStyleSet,
+) -> ComposedParagraph {
+    compose_paragraph_scoped(para, styles.supplemental_metrics.is_some(), Some(styles))
+}
+
+pub(crate) fn compose_paragraph_for_metric_requests(para: &Paragraph) -> ComposedParagraph {
+    compose_paragraph_scoped(para, true, None)
+}
+
+fn compose_paragraph_scoped(
+    para: &Paragraph,
+    protect_metrics: bool,
+    metric_styles: Option<&ResolvedStyleSet>,
+) -> ComposedParagraph {
     // [Task #991] HWP5 parser 의 inline marker 누락 보정 (rendering 전용)
     let synth_para = synthesize_marker_paragraph(para);
     let para = synth_para.as_ref().unwrap_or(para);
@@ -473,6 +509,11 @@ pub fn compose_paragraph(para: &Paragraph) -> ComposedParagraph {
     // Hanyang-PUA 옛한글 / 한컴 PUA와 legacy 제품명 표시 문자열 변환 (렌더링·측정용)
     convert_pua_display_text(&mut composed);
 
+    // Keep existing display projection intact; inserted control text has no source span.
+    if protect_metrics {
+        supplemental_clusters::preserve_boundaries(&mut composed, &para.text, metric_styles);
+    }
+
     composed
 }
 
@@ -483,7 +524,7 @@ pub(crate) fn compose_paragraph_with_horizontal_shaping(
     para: &Paragraph,
     styles: &ResolvedStyleSet,
 ) -> ComposedParagraph {
-    let mut composed = compose_paragraph(para);
+    let mut composed = compose_paragraph_in_context(para, styles);
     composed.horizontal_shaping =
         line_breaking::compose_horizontal_shaping_handoff(para, &composed, styles);
     composed
@@ -751,6 +792,8 @@ fn inject_footnote_markers(lines: &mut [ComposedLine], positions: &[(usize, u16)
                     char_overlap: None,
                     footnote_marker: Some(number),
                     display_text: None,
+                    supplemental_metrics_blocked: false,
+                    inserted_control_text: false,
                 };
 
                 let mut new_runs = Vec::new();
@@ -765,6 +808,8 @@ fn inject_footnote_markers(lines: &mut [ComposedLine], positions: &[(usize, u16)
                                 char_overlap: run.char_overlap.clone(),
                                 footnote_marker: None,
                                 display_text: None,
+                                supplemental_metrics_blocked: run.supplemental_metrics_blocked,
+                                inserted_control_text: run.inserted_control_text,
                             });
                         }
                         new_runs.push(marker_run.clone());
@@ -776,6 +821,8 @@ fn inject_footnote_markers(lines: &mut [ComposedLine], positions: &[(usize, u16)
                                 char_overlap: run.char_overlap.clone(),
                                 footnote_marker: None,
                                 display_text: None,
+                                supplemental_metrics_blocked: run.supplemental_metrics_blocked,
+                                inserted_control_text: run.inserted_control_text,
                             });
                         }
                     } else {
@@ -850,6 +897,8 @@ fn compose_lines(para: &Paragraph) -> Vec<ComposedLine> {
                     char_overlap: None,
                     footnote_marker: None,
                     display_text: None,
+                    supplemental_metrics_blocked: false,
+                    inserted_control_text: false,
                 }]),
                 line_height: 400,
                 baseline_distance: 320,
@@ -1144,6 +1193,8 @@ fn split_by_char_shapes(
             char_overlap: None,
             footnote_marker: None,
             display_text: None,
+            supplemental_metrics_blocked: false,
+            inserted_control_text: false,
         }]);
     }
 
@@ -1203,6 +1254,8 @@ fn split_by_char_shapes(
             char_overlap: None,
             footnote_marker: None,
             display_text: None,
+            supplemental_metrics_blocked: false,
+            inserted_control_text: false,
         }]);
     }
 
@@ -1229,6 +1282,8 @@ fn split_by_char_shapes(
                     char_overlap: None,
                     footnote_marker: None,
                     display_text: None,
+                    supplemental_metrics_blocked: false,
+                    inserted_control_text: false,
                 });
             }
         }
@@ -1249,6 +1304,8 @@ fn split_by_char_shapes(
                     char_overlap: None,
                     footnote_marker: None,
                     display_text: None,
+                    supplemental_metrics_blocked: false,
+                    inserted_control_text: false,
                 },
             );
         }
@@ -1263,6 +1320,8 @@ fn split_by_char_shapes(
             char_overlap: None,
             footnote_marker: None,
             display_text: None,
+            supplemental_metrics_blocked: false,
+            inserted_control_text: false,
         });
     }
 
@@ -1349,6 +1408,8 @@ pub(crate) fn split_runs_by_lang(runs: Vec<ComposedTextRun>) -> Vec<ComposedText
                         char_overlap: run.char_overlap.clone(),
                         footnote_marker: None,
                         display_text: None,
+                        supplemental_metrics_blocked: run.supplemental_metrics_blocked,
+                        inserted_control_text: run.inserted_control_text,
                     });
                 }
                 current_lang = char_lang;
@@ -1366,6 +1427,8 @@ pub(crate) fn split_runs_by_lang(runs: Vec<ComposedTextRun>) -> Vec<ComposedText
                 char_overlap: run.char_overlap.clone(),
                 footnote_marker: None,
                 display_text: None,
+                supplemental_metrics_blocked: run.supplemental_metrics_blocked,
+                inserted_control_text: run.inserted_control_text,
             });
         }
     }
@@ -1505,6 +1568,8 @@ fn inject_char_overlap_text(composed: &mut ComposedParagraph, para: &Paragraph) 
                 }),
                 footnote_marker: None,
                 display_text: None,
+                supplemental_metrics_blocked: false,
+                inserted_control_text: true,
             },
         ));
     }
@@ -1596,6 +1661,9 @@ fn insert_overlap_run(
                         char_overlap: None,
                         footnote_marker: None,
                         display_text: None,
+                        supplemental_metrics_blocked: line.runs[run_idx]
+                            .supplemental_metrics_blocked,
+                        inserted_control_text: line.runs[run_idx].inserted_control_text,
                     };
 
                     // overlap_run과 after_run을 삽입
@@ -1629,7 +1697,7 @@ pub fn estimate_composed_line_width(line: &ComposedLine, styles: &ResolvedStyleS
     line.runs
         .iter()
         .map(|run| {
-            let ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+            let ts = run.text_style(styles);
             estimate_text_width(effective_text_for_metrics(run), &ts)
         })
         .sum()
@@ -1756,7 +1824,7 @@ pub(crate) fn no_ls_short_label_cell(
     }
     let mut em_sum = 0.0f64;
     for p in &cell.paragraphs {
-        let mut comp = compose_paragraph(p);
+        let mut comp = compose_paragraph_in_context(p, styles);
         recompose_cell_lines_in_frame(
             &mut comp,
             p,
@@ -1895,7 +1963,7 @@ fn recompose_stored_single_line_if_overflowing_cached(
     if std::env::var("RHWP_DIAG_CELLREWRAP").is_ok() && over {
         if let Some(l) = composed.lines.first() {
             for run in &l.runs {
-                let ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                let ts = run.text_style(styles);
                 eprintln!(
                     "DIAG_CELLREWRAP inner={:.1} fs={:.1} lsp={:.2} font={:?} w={:.1} text={:?}",
                     cell_inner_width_px,
@@ -2193,7 +2261,7 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band(
             // 줄이 보정폭만큼 늦게 끊긴다(36360328: fill 이 char 51(=raw 83)에
             // 끊었는데 +8 재보정으로 59가 되어 첫 줄이 우단 밖 +75px).
             reflowed_para.hwpx_axis_shift = 0;
-            let mut reflowed = compose_paragraph(&reflowed_para);
+            let mut reflowed = compose_paragraph_in_context(&reflowed_para, styles);
             preserve_context_resolved_runs(composed, &mut reflowed);
             let mut reconciled = composed.clone();
             reconciled.lines = reflowed.lines;
@@ -2264,7 +2332,7 @@ pub(crate) fn probe_stored_row_disposition(
         return StoredRowProbeDisposition::Unmodelled;
     }
 
-    let composed = compose_paragraph(para);
+    let composed = compose_paragraph_in_context(para, styles);
     let inner_width_px = paragraph_box.width_px(dpi);
     let stale = stored_rows_are_stale(&composed, para, inner_width_px, styles);
     let mut frame = paragraph_box.frame(
@@ -2726,7 +2794,7 @@ pub(crate) fn shrunk_cell_horizontal_padding(
         for line in &comp.lines {
             let mut w = 0.0;
             for run in &line.runs {
-                let mut ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                let mut ts = run.text_style(styles);
                 if run.char_overlap.is_some() {
                     let fs = if ts.font_size > 0.0 {
                         ts.font_size
@@ -2799,7 +2867,7 @@ fn missing_lineseg_legacy_bullet_requires_regenerated_space_metric(
             .iter()
             .flat_map(|line| &line.runs)
             .any(|run| {
-                let style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                let style = run.text_style(styles);
                 hancom_regenerated_space_width(&style).is_some()
             })
 }
@@ -2865,6 +2933,8 @@ fn split_composed_line_by_width(
                         char_overlap: t.char_overlap.clone(),
                         footnote_marker: t.footnote_marker,
                         display_text: None,
+                        supplemental_metrics_blocked: t.supplemental_metrics_blocked,
+                        inserted_control_text: t.inserted_control_text,
                     });
                 } else {
                     text.clear();
@@ -2895,11 +2965,17 @@ fn split_composed_line_by_width(
     };
 
     for run in &src.runs {
-        let ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+        let ts = run.text_style(styles);
         // 현재 run 의 template 변경 (char_style 다른 run 들 처리)
         if current_run_template
             .as_ref()
-            .map(|t| t.char_style_id != run.char_style_id || t.lang_index != run.lang_index)
+            .map(|t| {
+                t.char_style_id != run.char_style_id
+                    || t.lang_index != run.lang_index
+                    || (styles.supplemental_metrics.is_some()
+                        && (t.supplemental_metrics_blocked != run.supplemental_metrics_blocked
+                            || t.inserted_control_text != run.inserted_control_text))
+            })
             .unwrap_or(true)
         {
             flush_run(
@@ -3501,6 +3577,8 @@ fn convert_pua_enclosed_numbers(composed: &mut ComposedParagraph) {
                             char_overlap: None,
                             footnote_marker: None,
                             display_text: None,
+                            supplemental_metrics_blocked: run.supplemental_metrics_blocked,
+                            inserted_control_text: run.inserted_control_text,
                         });
                         buf.clear();
                     }
@@ -3515,6 +3593,8 @@ fn convert_pua_enclosed_numbers(composed: &mut ComposedParagraph) {
                         }),
                         footnote_marker: None,
                         display_text: None,
+                        supplemental_metrics_blocked: run.supplemental_metrics_blocked,
+                        inserted_control_text: run.inserted_control_text,
                     });
                 } else {
                     buf.push(ch);
@@ -3530,6 +3610,8 @@ fn convert_pua_enclosed_numbers(composed: &mut ComposedParagraph) {
                     char_overlap: None,
                     footnote_marker: None,
                     display_text: None,
+                    supplemental_metrics_blocked: run.supplemental_metrics_blocked,
+                    inserted_control_text: run.inserted_control_text,
                 });
             }
         }

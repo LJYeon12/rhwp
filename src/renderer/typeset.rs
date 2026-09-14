@@ -617,7 +617,12 @@ fn composed_footnote_content_height(footnote: &Footnote, dpi: f64) -> f64 {
     let total_lines: usize = footnote
         .paragraphs
         .iter()
-        .map(|para| compose_paragraph(para).lines.len().max(1))
+        .map(|para| {
+            crate::renderer::composer::compose_paragraph(para)
+                .lines
+                .len()
+                .max(1)
+        })
         .sum();
     if total_lines == 0 {
         return 0.0;
@@ -626,7 +631,7 @@ fn composed_footnote_content_height(footnote: &Footnote, dpi: f64) -> f64 {
     let mut height = 0.0;
     let mut line_index = 0usize;
     for para in &footnote.paragraphs {
-        let composed = compose_paragraph(para);
+        let composed = crate::renderer::composer::compose_paragraph(para);
         if composed.lines.is_empty() {
             height += hwpunit_to_px(400, dpi);
             line_index += 1;
@@ -6440,7 +6445,8 @@ impl TypesetEngine {
             };
             y = hc.vpos_adjust(y, local, &local_paras, styles);
             let item_para = &local_paras[local];
-            let item_composed = crate::renderer::composer::compose_paragraph(item_para);
+            let item_composed =
+                crate::renderer::composer::compose_paragraph_in_context(item_para, styles);
             let item_fmt =
                 self.format_paragraph(item_para, Some(&item_composed), styles, column_width);
             y += match item {
@@ -10577,7 +10583,8 @@ impl TypesetEngine {
             && !large_between_small_equation_tail_bleeds_previous_column
             && line_is_equation_tac_text_run_only(en_para, &composed, 0)
             && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                let next_comp =
+                    crate::renderer::composer::compose_paragraph_in_context(next_para, styles);
                 let next_fmt =
                     self.format_paragraph(next_para, Some(&next_comp), &styles, Some(en_col_w));
                 next_fmt.line_heights.len() == 1
@@ -10903,7 +10910,8 @@ impl TypesetEngine {
             && ep_idx + 1 < en_ctrl.paragraphs.len()
             && st.current_height > available * 0.90
             && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                let next_comp =
+                    crate::renderer::composer::compose_paragraph_in_context(next_para, styles);
                 let next_fmt =
                     self.format_paragraph(next_para, Some(&next_comp), &styles, Some(en_col_w));
                 para_has_visible_text_or_equation(next_para)
@@ -11011,7 +11019,7 @@ impl TypesetEngine {
             });
             last_render_endnote_para_local_idx = Some(en_para_local_idx);
 
-            let composed = crate::renderer::composer::compose_paragraph(en_para);
+            let composed = crate::renderer::composer::compose_paragraph_in_context(en_para, styles);
             let en_col_w = st
                 .layout
                 .column_areas
@@ -11210,7 +11218,9 @@ impl TypesetEngine {
                             .skip(ep_idx)
                             .map(|tail_para| {
                                 let tail_comp =
-                                    crate::renderer::composer::compose_paragraph(tail_para);
+                                    crate::renderer::composer::compose_paragraph_in_context(
+                                        tail_para, styles,
+                                    );
                                 self.format_endnote_paragraph(
                                     tail_para,
                                     Some(&tail_comp),
@@ -11252,7 +11262,9 @@ impl TypesetEngine {
                             .skip(ep_idx)
                             .map(|tail_para| {
                                 let tail_comp =
-                                    crate::renderer::composer::compose_paragraph(tail_para);
+                                    crate::renderer::composer::compose_paragraph_in_context(
+                                        tail_para, styles,
+                                    );
                                 self.format_endnote_paragraph(
                                     tail_para,
                                     Some(&tail_comp),
@@ -11463,21 +11475,23 @@ impl TypesetEngine {
             } else {
                 None
             };
-            let same_endnote_body_first_line_advance =
-                if ep_idx == 0 && no_separator_large_between_notes_gap {
-                    en_ctrl.paragraphs.get(1).map(|body_para| {
-                        let body_comp = crate::renderer::composer::compose_paragraph(body_para);
-                        let body_fmt = self.format_endnote_paragraph(
-                            body_para,
-                            Some(&body_comp),
-                            &styles,
-                            Some(en_col_w),
-                        );
-                        body_fmt.line_advance(0)
-                    })
-                } else {
-                    None
-                };
+            let same_endnote_body_first_line_advance = if ep_idx == 0
+                && no_separator_large_between_notes_gap
+            {
+                en_ctrl.paragraphs.get(1).map(|body_para| {
+                    let body_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(body_para, styles);
+                    let body_fmt = self.format_endnote_paragraph(
+                        body_para,
+                        Some(&body_comp),
+                        &styles,
+                        Some(en_col_w),
+                    );
+                    body_fmt.line_advance(0)
+                })
+            } else {
+                None
+            };
             let no_separator_new_note_head_fits_current_column =
                 no_separator_large_between_notes_gap
                     && ep_idx == 0
@@ -11763,7 +11777,8 @@ impl TypesetEngine {
                     let mut next_para = next_ctrl.paragraphs.first()?.clone();
                     prepend_endnote_marker_text(&mut next_para, next_ctrl);
 
-                    let next_comp = crate::renderer::composer::compose_paragraph(&next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(&next_para, styles);
                     let next_fmt = self.format_endnote_paragraph(
                         &next_para,
                         Some(&next_comp),
@@ -11788,7 +11803,8 @@ impl TypesetEngine {
                     let mut next_para = next_ctrl.paragraphs.first()?.clone();
                     prepend_endnote_marker_text(&mut next_para, next_ctrl);
 
-                    let next_comp = crate::renderer::composer::compose_paragraph(&next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(&next_para, styles);
                     let next_fmt = self.format_endnote_paragraph(
                         &next_para,
                         Some(&next_comp),
@@ -11812,7 +11828,8 @@ impl TypesetEngine {
                     let mut next_para = next_ctrl.paragraphs.first()?.clone();
                     prepend_endnote_marker_text(&mut next_para, next_ctrl);
 
-                    let next_comp = crate::renderer::composer::compose_paragraph(&next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(&next_para, styles);
                     let next_fmt = self.format_endnote_paragraph(
                         &next_para,
                         Some(&next_comp),
@@ -11839,7 +11856,9 @@ impl TypesetEngine {
                             if !para_is_treat_as_char_picture_only(next_para) {
                                 return false;
                             }
-                            let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                            let next_comp = crate::renderer::composer::compose_paragraph_in_context(
+                                next_para, styles,
+                            );
                             let next_fmt = self.format_endnote_paragraph(
                                 next_para,
                                 Some(&next_comp),
@@ -11997,7 +12016,8 @@ impl TypesetEngine {
                 && st.current_height + en_fit
                     <= available + ENDNOTE_COLUMN_BOTTOM_BLEED_TOLERANCE_PX
                 && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                    let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(next_para, styles);
                     let next_fmt = self.format_endnote_paragraph(
                         next_para,
                         Some(&next_comp),
@@ -12509,7 +12529,9 @@ impl TypesetEngine {
                         <= available + ENDNOTE_COLUMN_BOTTOM_BLEED_TOLERANCE_PX + 80.0
                     && line_is_equation_tac_text_run_only(en_para, &composed, 0)
                     && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                        let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                        let next_comp = crate::renderer::composer::compose_paragraph_in_context(
+                            next_para, styles,
+                        );
                         let next_fmt = self.format_endnote_paragraph(
                             next_para,
                             Some(&next_comp),
@@ -12703,7 +12725,8 @@ impl TypesetEngine {
             }
             let next_endnote_first_line_advance = if ep_idx == 0 {
                 en_ctrl.paragraphs.get(1).map(|next_para| {
-                    let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(next_para, styles);
                     self.format_endnote_paragraph(
                         next_para,
                         Some(&next_comp),
@@ -12719,7 +12742,8 @@ impl TypesetEngine {
                 let mut total = 0.0;
                 let mut count = 0;
                 for next_para in en_ctrl.paragraphs.iter().skip(1).take(2) {
-                    let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(next_para, styles);
                     let next_fmt = self.format_endnote_paragraph(
                         next_para,
                         Some(&next_comp),
@@ -13103,7 +13127,9 @@ impl TypesetEngine {
                     && visible_large_between_notes_gap
                     && st.current_column + 1 >= st.col_count
                     && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                        let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                        let next_comp = crate::renderer::composer::compose_paragraph_in_context(
+                            next_para, styles,
+                        );
                         let next_fmt = self.format_endnote_paragraph(
                             next_para,
                             Some(&next_comp),
@@ -13352,7 +13378,9 @@ impl TypesetEngine {
                     && !para_has_treat_as_char_picture_or_shape(en_para)
                     && !para_has_non_tac_picture_or_shape(en_para)
                     && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                        let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                        let next_comp = crate::renderer::composer::compose_paragraph_in_context(
+                            next_para, styles,
+                        );
                         let next_fmt = self.format_endnote_paragraph(
                             next_para,
                             Some(&next_comp),
@@ -13383,7 +13411,9 @@ impl TypesetEngine {
                     && !para_has_treat_as_char_picture_or_shape(en_para)
                     && !para_has_non_tac_picture_or_shape(en_para)
                     && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                        let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                        let next_comp = crate::renderer::composer::compose_paragraph_in_context(
+                            next_para, styles,
+                        );
                         let next_fmt = self.format_endnote_paragraph(
                             next_para,
                             Some(&next_comp),
@@ -13411,7 +13441,9 @@ impl TypesetEngine {
                     && st.current_height + fmt.line_advance(0)
                         <= available + ENDNOTE_COLUMN_BOTTOM_BLEED_TOLERANCE_PX + 2.0
                     && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                        let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                        let next_comp = crate::renderer::composer::compose_paragraph_in_context(
+                            next_para, styles,
+                        );
                         let next_fmt = self.format_endnote_paragraph(
                             next_para,
                             Some(&next_comp),
@@ -13474,7 +13506,9 @@ impl TypesetEngine {
                         line_has_tac_equation_control(en_para, &composed, last_line)
                     }
                     && en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                        let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                        let next_comp = crate::renderer::composer::compose_paragraph_in_context(
+                            next_para, styles,
+                        );
                         let next_fmt = self.format_endnote_paragraph(
                             next_para,
                             Some(&next_comp),
@@ -13710,7 +13744,8 @@ impl TypesetEngine {
                     });
                     last_render_endnote_para_local_idx = Some(st.endnote_paragraphs.len() - 1);
 
-                    let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(next_para, styles);
                     let next_fmt = self.format_endnote_paragraph(
                         next_para,
                         Some(&next_comp),
@@ -13964,7 +13999,9 @@ impl TypesetEngine {
                             .paragraphs
                             .iter()
                             .map(|p| {
-                                let comp = crate::renderer::composer::compose_paragraph(p);
+                                let comp = crate::renderer::composer::compose_paragraph_in_context(
+                                    p, styles,
+                                );
                                 self.format_endnote_paragraph(
                                     p,
                                     Some(&comp),
@@ -14697,7 +14734,7 @@ impl TypesetEngine {
                         .get(st.current_column as usize)
                         .map(|a| a.width)
                         .unwrap_or(st.layout.body_area.width);
-                    let comp = crate::renderer::composer::compose_paragraph(p);
+                    let comp = crate::renderer::composer::compose_paragraph_in_context(p, styles);
                     let fmt =
                         self.format_endnote_paragraph(p, Some(&comp), &styles, Some(en_col_w));
                     fmt.line_heights.len() == 1
@@ -14883,7 +14920,9 @@ impl TypesetEngine {
                         let current_head_has_large_tac_picture =
                             en_ctrl.paragraphs.iter().take(8).any(|head_para| {
                                 let head_comp =
-                                    crate::renderer::composer::compose_paragraph(head_para);
+                                    crate::renderer::composer::compose_paragraph_in_context(
+                                        head_para, styles,
+                                    );
                                 (0..head_comp.lines.len()).any(|line_idx| {
                                     !line_has_visible_text(&head_comp, line_idx)
                                         && line_tac_picture_or_shape_height(
@@ -15451,7 +15490,8 @@ impl TypesetEngine {
                 y = hc.vpos_adjust(y, local, &local_paras, styles);
             }
             let item_para = &local_paras[local];
-            let item_composed = crate::renderer::composer::compose_paragraph(item_para);
+            let item_composed =
+                crate::renderer::composer::compose_paragraph_in_context(item_para, styles);
             // [Task #1363 v2 Stage 3] 휴리스틱 advance 추정. 렌더러는 미주 텍스트/수식 para 를
             // **저장 line_segs**(hancom 레이아웃)로 그린다 — format_paragraph reflow(total_height)가
             // 아님. 수식 다줄 para 는 reflow 가 저장 span 보다 큼(pi=1126: 237 vs 185.8) → 단 과대.
@@ -15641,7 +15681,8 @@ impl TypesetEngine {
                 };
                 y = hc.vpos_adjust(y, local, &local_paras, &styles);
                 let item_para = &local_paras[local];
-                let item_composed = crate::renderer::composer::compose_paragraph(item_para);
+                let item_composed =
+                    crate::renderer::composer::compose_paragraph_in_context(item_para, styles);
                 let item_fmt = self.format_endnote_paragraph(
                     item_para,
                     Some(&item_composed),
@@ -16041,7 +16082,8 @@ impl TypesetEngine {
                 .paragraphs
                 .get(1)
                 .map(|next_para| {
-                    let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(next_para, styles);
                     let next_fmt = self.format_endnote_paragraph(
                         next_para,
                         Some(&next_comp),
@@ -16250,7 +16292,9 @@ impl TypesetEngine {
                             .take(3)
                             .map(|head_para| {
                                 let head_comp =
-                                    crate::renderer::composer::compose_paragraph(head_para);
+                                    crate::renderer::composer::compose_paragraph_in_context(
+                                        head_para, styles,
+                                    );
                                 self.format_endnote_paragraph(
                                     head_para,
                                     Some(&head_comp),
@@ -16317,7 +16361,8 @@ impl TypesetEngine {
                     && line_has_visible_text_or_tac_equation(en_para, &composed, 0)
             } else if ep_idx == 1 {
                 en_ctrl.paragraphs.get(ep_idx + 1).is_some_and(|next_para| {
-                    let next_comp = crate::renderer::composer::compose_paragraph(next_para);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(next_para, styles);
                     let next_fmt = self.format_endnote_paragraph(
                         next_para,
                         Some(&next_comp),
@@ -16439,7 +16484,9 @@ impl TypesetEngine {
                     .iter()
                     .take(3)
                     .map(|head_para| {
-                        let head_comp = crate::renderer::composer::compose_paragraph(head_para);
+                        let head_comp = crate::renderer::composer::compose_paragraph_in_context(
+                            head_para, styles,
+                        );
                         self.format_endnote_paragraph(
                             head_para,
                             Some(&head_comp),

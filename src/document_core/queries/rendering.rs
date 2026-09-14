@@ -27,7 +27,7 @@ use crate::renderer::kerning::{
     ExactFontRegistryRegistration, ExactFontSlot, MAX_KERNING_REGISTRY_SLOTS,
 };
 use crate::renderer::layer_renderer::LayerRenderer;
-use crate::renderer::layout::{estimate_text_width, resolved_to_text_style, CellContext};
+use crate::renderer::layout::{estimate_text_width, CellContext};
 use crate::renderer::page_layout::PageLayoutInfo;
 use crate::renderer::pagination::{
     HeaderFooterRef, MasterPageRef, PageContent, PaginationResult, Paginator,
@@ -5743,7 +5743,10 @@ impl DocumentCore {
                 .enumerate()
                 .map(|(i, p)| {
                     if matches.binary_search(&i).is_ok() {
-                        let mut c = compose_paragraph(p);
+                        let mut c = crate::renderer::composer::compose_paragraph_in_context(
+                            p,
+                            &self.styles,
+                        );
                         // [#2004] composer 가 line_seg 부족(HWP5 빈-문단)으로 1줄로 붕괴하면
                         // 그림 수만큼 줄을 합성(모두 char_start 동일)해 Stage2 stacked 게이트
                         // (comp.lines.len()==tac_controls) 가 발동하게 한다.
@@ -5771,9 +5774,9 @@ impl DocumentCore {
                         }
                         c
                     } else {
-                        base.and_then(|c| c.get(i))
-                            .cloned()
-                            .unwrap_or_else(|| compose_paragraph(p))
+                        base.and_then(|c| c.get(i)).cloned().unwrap_or_else(|| {
+                            crate::renderer::composer::compose_paragraph_in_context(p, &self.styles)
+                        })
                     }
                 })
                 .collect();
@@ -6999,7 +7002,8 @@ impl DocumentCore {
             return None;
         }
 
-        let composed = compose_paragraph(paragraph);
+        let composed =
+            crate::renderer::composer::compose_paragraph_in_context(paragraph, &self.styles);
         if composed.numbering_text.is_some()
             || !composed.inline_controls.is_empty()
             || !composed.tac_controls.is_empty()
@@ -7105,7 +7109,7 @@ impl DocumentCore {
                 return None;
             }
 
-            let mut style = resolved_to_text_style(&self.styles, run.char_style_id, run.lang_index);
+            let mut style = run.text_style(&self.styles);
             if !focused_partial_repaint_style_is_safe(&style) {
                 return None;
             }
@@ -7602,7 +7606,7 @@ impl DocumentCore {
             combined_paragraphs = paragraphs.iter().chain(en_paras.iter()).cloned().collect();
             let en_composed: Vec<_> = en_paras
                 .iter()
-                .map(|p| crate::renderer::composer::compose_paragraph(p))
+                .map(|p| crate::renderer::composer::compose_paragraph_in_context(p, &self.styles))
                 .collect();
             combined_composed = composed
                 .iter()

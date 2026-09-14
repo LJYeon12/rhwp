@@ -443,12 +443,15 @@ pub(crate) fn standalone_scalar_mask(text: &str, style: &TextStyle) -> Option<Ve
     if !style.supplemental_metrics.as_ref()?.is_active() {
         return None;
     }
-    Some(
-        text.graphemes(true)
-            .flat_map(|g| {
-                let count = g.chars().count();
-                std::iter::repeat_n(count == 1, count)
-            })
-            .collect(),
-    )
+    Some(scalar_eligibility(text))
+}
+
+/// One Unicode grapheme policy for paragraph preparation and local measurement.
+pub(crate) fn scalar_eligibility(text: &str) -> Vec<bool> {
+    text.graphemes(true)
+        .flat_map(|g| {
+            let count = g.chars().count();
+            std::iter::repeat_n(count == 1, count)
+        })
+        .collect()
 }

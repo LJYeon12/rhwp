@@ -2167,7 +2167,7 @@ impl HeightMeasurer {
                         .iter()
                         .enumerate()
                         .map(|(pidx, p)| {
-                            let mut comp = compose_paragraph(p);
+                            let mut comp = crate::renderer::composer::compose_paragraph_in_context(p, styles);
                             // [Task #671] line_segs 비어 있는 셀 paragraph 의 단일 ComposedLine
                             // 압축 결과를 셀 가용 너비에 맞춰 다중 ComposedLine 으로 재분할.
                             // 측정/렌더링 일관성 (layout 의 같은 프레임 호출과 동일).
@@ -2805,7 +2805,8 @@ impl HeightMeasurer {
                     cell.paragraphs
                         .last()
                         .map(|p| {
-                            let mut comp = compose_paragraph(p);
+                            let mut comp =
+                                crate::renderer::composer::compose_paragraph_in_context(p, styles);
                             crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
                                 &mut comp,
                                 p,
@@ -2885,7 +2886,9 @@ impl HeightMeasurer {
                         && required_height > cell_h_px * 1.5
                     {
                         for (cell_para_index, cell_para) in cell.paragraphs.iter().enumerate() {
-                            let mut comp = compose_paragraph(cell_para);
+                            let mut comp = crate::renderer::composer::compose_paragraph_in_context(
+                                cell_para, styles,
+                            );
                             crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
                                 &mut comp,
                                 cell_para,
@@ -3107,7 +3110,7 @@ impl HeightMeasurer {
                         .iter()
                         .enumerate()
                         .map(|(pidx, p)| {
-                            let mut comp = compose_paragraph(p);
+                            let mut comp = crate::renderer::composer::compose_paragraph_in_context(p, styles);
                             // [Task #671] line_segs 비어 있는 셀 paragraph 의 단일 ComposedLine
                             // 압축 결과를 셀 가용 너비에 맞춰 다중 ComposedLine 으로 재분할.
                             crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
@@ -3695,7 +3698,8 @@ impl HeightMeasurer {
                     let para_count = cell.paragraphs.len();
 
                     for (pi, p) in cell.paragraphs.iter().enumerate() {
-                        let comp = compose_paragraph(p);
+                        let comp =
+                            crate::renderer::composer::compose_paragraph_in_context(p, styles);
                         let para_style = styles.para_styles.get(p.para_shape_id as usize);
                         let is_last_para = pi + 1 == para_count;
                         // compute_cell_line_ranges와 동일 규칙:

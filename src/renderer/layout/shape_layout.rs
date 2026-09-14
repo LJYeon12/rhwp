@@ -308,7 +308,7 @@ fn measure_composed_text_range_width(
                         continue;
                     }
                 }
-                let mut style = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                let mut style = run.text_style(styles);
                 style.default_tab_width = tab_width;
                 width += estimate_text_width(&seg_text, &style);
             }
@@ -437,7 +437,7 @@ fn reflow_matrix_textbox_para(
     }
 
     const MATRIX_TEXT_FIT_TOLERANCE_PX: f64 = 3.0;
-    let composed = compose_paragraph(para);
+    let composed = crate::renderer::composer::compose_paragraph_in_context(para, styles);
     let text_len = para.text.chars().count();
     let full_width = measure_composed_text_range_width(&composed, styles, 0, text_len, None);
 
@@ -2832,7 +2832,7 @@ impl LayoutEngine {
                 // 이 텍스트박스는 연결된 텍스트박스의 타겟: 오버플로우 문단 렌더링
                 let composed_paras: Vec<_> = overflow_paras
                     .iter()
-                    .map(|p| compose_paragraph(p))
+                    .map(|p| crate::renderer::composer::compose_paragraph_in_context(p, styles))
                     .collect();
                 let mut para_y = inner_area.y;
                 for (tb_para_idx, composed) in composed_paras.iter().enumerate() {
@@ -2977,7 +2977,8 @@ impl LayoutEngine {
         let mut composed_paras: Vec<_> = textbox_paragraphs[..para_count]
             .iter()
             .map(|para| {
-                let composed = compose_paragraph(para);
+                let composed =
+                    crate::renderer::composer::compose_paragraph_in_context(para, styles);
                 if !para.line_segs.is_empty() {
                     return composed;
                 }
@@ -3303,31 +3304,29 @@ impl LayoutEngine {
 
             // 인라인 컨트롤의 시작 x 위치 (정렬 기반)
             // 이미지+텍스트 전체 폭을 기준으로 정렬 (함께 센터링)
-            let first_line_text_width: f64 = if total_inline_width > 0.0
-                && pi < composed_paras.len()
-            {
-                if let Some(first_line) = composed_paras[pi].lines.get(inline_line_idx) {
-                    let tab_width = styles
-                        .para_styles
-                        .get(composed_paras[pi].para_style_id as usize)
-                        .map(|s| s.default_tab_width)
-                        .unwrap_or(0.0);
-                    first_line
-                        .runs
-                        .iter()
-                        .map(|run| {
-                            let mut ts =
-                                resolved_to_text_style(styles, run.char_style_id, run.lang_index);
-                            ts.default_tab_width = tab_width;
-                            estimate_text_width(&run.text, &ts)
-                        })
-                        .sum()
+            let first_line_text_width: f64 =
+                if total_inline_width > 0.0 && pi < composed_paras.len() {
+                    if let Some(first_line) = composed_paras[pi].lines.get(inline_line_idx) {
+                        let tab_width = styles
+                            .para_styles
+                            .get(composed_paras[pi].para_style_id as usize)
+                            .map(|s| s.default_tab_width)
+                            .unwrap_or(0.0);
+                        first_line
+                            .runs
+                            .iter()
+                            .map(|run| {
+                                let mut ts = run.text_style(styles);
+                                ts.default_tab_width = tab_width;
+                                estimate_text_width(&run.text, &ts)
+                            })
+                            .sum()
+                    } else {
+                        0.0
+                    }
                 } else {
                     0.0
-                }
-            } else {
-                0.0
-            };
+                };
             // [#5820 축3] 한글은 오른쪽 정렬 폭에서 말미 공백을 제외한다 — 글상자
             // [로고A][로고B][공백5] RIGHT 문단에서 포함하면 로고가 말미 공백 폭
             // (32.7px)만큼 좌측 이탈한다(156560092 실측: 한글 로고 B 우변 여백
@@ -3753,7 +3752,10 @@ impl LayoutEngine {
             absorbed_spacing: f64, // 흡수된 line_spacing (px) — 마지막 칼럼 후처리용
         }
 
-        let composed_paras: Vec<_> = paragraphs.iter().map(|p| compose_paragraph(p)).collect();
+        let composed_paras: Vec<_> = paragraphs
+            .iter()
+            .map(|p| crate::renderer::composer::compose_paragraph_in_context(p, styles))
+            .collect();
 
         let get_alignment = |para_style_id: u16| -> Alignment {
             styles
@@ -3809,8 +3811,7 @@ impl LayoutEngine {
                 let mut col_height = 0.0;
 
                 for run in &line.runs {
-                    let text_style =
-                        resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                    let text_style = run.text_style(styles);
                     for ch in run.text.chars() {
                         if ch == '\n' || ch == '\r' {
                             char_offset += 1;
