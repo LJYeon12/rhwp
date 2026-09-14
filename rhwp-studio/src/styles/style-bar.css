@@ -882,3 +882,36 @@
     border: 0;
   }
 }
+
+/* ── 언어팩: 영어 라벨 폭 보정 ──────────────────────────────────────────────
+   글꼴 적용 언어 상자의 영어 값(Font Set·Japanese)은 한국어(대표·일어)보다 20px 가량 넓다.
+   격자 둘째 칸이 상자 폭을 정하므로 그 칸만 넓힌다. html[lang='en'] 에만 걸어 한국어 배치는 그대로다. */
+html[lang='en'] .sb-field-grid {
+  grid-template-columns:
+    minmax(68px, 88px)
+    minmax(74px, 84px)
+    136px
+    minmax(72px, 86px)
+    minmax(72px, 86px);
+  width: min(496px, 100%);
+}
+@media (max-width: 459px) {
+  html[lang='en'] .sb-field-grid {
+    grid-template-columns:
+      minmax(54px, 1fr)
+      minmax(40px, 0.75fr)
+      136px
+      minmax(54px, 0.95fr)
+      minmax(54px, 0.95fr);
+  }
+}
+@media (min-width: 808px) {
+  html[lang='en'] .sb-field-ribbon-group {
+    flex-basis: 501px;
+    width: 501px;
+    min-width: 501px;
+  }
+  html[lang='en'] .sb-field-grid {
+    grid-template-columns: 88px 84px 136px 86px 86px;
+  }
+}
