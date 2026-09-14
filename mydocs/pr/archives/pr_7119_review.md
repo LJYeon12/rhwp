@@ -5,10 +5,11 @@ canonical: mydocs/manual/pr_review_workflow.md
 last_verified: 2026-09-14
 ---
 
-# PR #7119 — Canvas 보충 진행폭 self-review 준비 기록
+# PR #7119 — Canvas 보충 진행폭 self-review
 
-현재 판정: **머지 보류**. 원격 CI와 정식 self-review는 아직 완료하지 않았다.
-이는 새 결함 검출이 아니라 제출 직후의 절차 상태다. 기존 로컬 검증과 메인테이너 시각 통과는 유지한다.
+검토 판정: **승인**. 최신 원격 `6434189bc`의 CI 완료 후 정식 self-review를 진행했다.
+검토한 변경 범위에서 병합 차단 결함을 발견하지 못했다. 이는 GitHub approve나 병합 승인이 아니다.
+기존 로컬 검증과 메인테이너 시각 통과는 유지하며 아래 지원 한계는 남긴다.
 
 ## 대상과 승인 경계
 
@@ -20,8 +21,27 @@ last_verified: 2026-09-14
 - 재조회한 base `11860a9f4186438a3cb9c355e3cd8d2257162d3a`; 최초 merge-tree exit 0.
 - 기본 경로 `collaborator_self_merge`; modifier `intake_and_review`, `local_validation`,
   `visual_fixture_evidence`, `rework_and_exceptions`, `review_only_fast_pass`를 읽고 적용했다.
-- 이번 승인은 작업 branch push·Open PR 생성·게시 준비 기록이다. GitHub approve/comment,
-  merge·issue close는 수행하지 않는다. [후속 검토 순서](pr_7119_review_impl.md)를 따른다.
+- 최초 승인은 작업 branch push·Open PR 생성·게시 준비 기록이었다. 이어서 CI 확인 후 self-review
+  진행 승인을 받았다. 이번 검토에서는 GitHub approve/comment, merge·issue close를 수행하지 않는다.
+  [후속 검토 순서](pr_7119_review_impl.md)를 따른다.
+
+## 최신 CI 확인
+
+2026-09-14 KST, 아래 모두 `6434189bc3564be34e6fe7021fe07568eaffa194`에 귀속된다.
+
+| 검증 | 결과 | 근거 |
+| --- | --- | --- |
+| CI | SUCCESS | [34798218652](https://github.com/edwardkim/rhwp/actions/runs/34798218652) |
+| CodeQL (Rust/JS·TS/Python) | SUCCESS | [34798218743](https://github.com/edwardkim/rhwp/actions/runs/34798218743) |
+| Render Diff | SUCCESS | [34798218651](https://github.com/edwardkim/rhwp/actions/runs/34798218651) |
+| Adapter inter-diff | SUCCESS | [34798218770](https://github.com/edwardkim/rhwp/actions/runs/34798218770) |
+| Proptest roundtrip | SUCCESS | [34798218716](https://github.com/edwardkim/rhwp/actions/runs/34798218716) |
+
+Build & Test aggregate, Lint, Native Skia, Archive A/B/C/D tests, Frontend package gates의 실제
+성공을 확인했다. Render Diff의 Canvas visual diff와 CodeQL 언어별 Analyze가 실행됐다.
+전체 작업이 fast-pass로 생략됐다고 해석하지 않는다. 별도 GHAS `CodeQL` check와
+최신 `CI Impact Policy` status도 성공이며 PR은 Open/MERGEABLE이다.
+후행 검토 문서를 push하면 그 새 SHA의 required check는 다시 확인해야 한다.
 
 ## 완료된 검증
 
@@ -41,18 +61,57 @@ renderer/Undo 계약, Render Diff 3/3·직접 PDF gate 3/3이 완료됐다.
 새 HWP/HWPX sample 추가·변경은 없으므로 신규 sample 보안 검사 입력 대상은 없다.
 PDF는 기존 MCP 산출물을 재사용했으며 새로 변환하지 않았다. 상세 출처·SHA-256은 Stage 7 5절을 따른다.
 
-## 조판 원칙 — 정식 self-review 확인 목록
+## 조판 원칙 — 정식 self-review
 
-아래는 제출 시 확인 범위이며, 구현 이름만으로 정식 검토 완료를 선언하지 않는다.
+검증 후보와 원격 head 사이 제품·테스트 차이가 없음을 확인하고 실제 자료 흐름과 회귀 assertion을 대조했다.
 
 | 항목 | 현재 근거와 남은 확인 | 판정 |
 | --- | --- | --- |
-| 구현 근거·일반성 | 세션 보충 폭과 적용 제외 계약이 존재한다. 정식 검토에서 전체 호출 경로와 임의 조건 유무를 확인한다. | 미검증 |
-| 측정·배치 일관성 | `text_measurement.rs`의 snapshot 조회와 `web_canvas.rs` descriptor 소비가 연결된다. 전체 수명·실패 경로 검토가 남았다. | 미검증 |
-| 줄 구성·점유 높이 | 객체 줄 소속/표 높이 규칙 변경은 범위 밖. 텍스트 진행폭 전달이 줄바꿈·caret와 일치하는지 정식 검토한다. | 미검증 |
+| 구현 근거·일반성 | `char_width_decision`의 기존 `heuristicHalfwidth` 결정에만 보충 폭을 적용한다. DB·공백·PUA·dash leader 제외, 비이모지 𝄞 계약도 확인했다. 문서명/페이지/이모지 정사각형 상수에 의존하지 않는다. | 충족 |
+| 측정·배치 일관성 | `CanvasTextFont`가 CSS 크기·장평·첨자 설정을 provider/paint에 공유하고 `natural_advance`에서 한 번 환산한다. 같은 `char_width_decision`을 총폭·문자 위치가 사용하며 Canvas는 등록 descriptor 검증 후 이중 fit을 생략한다. | 충족 |
+| 줄 구성·점유 높이 | `ParagraphMetricScope`와 `ComposedTextRun::text_style`이 원문 grapheme 경계를 조판·줄바꿈·caret·표/글상자 측정에 전달한다. 표의 줄 소속/높이 상수나 clamp는 추가하지 않는다. portable 경로의 기존 구성과 비관련 shaping run 유지 assertion을 확인했다. | 충족 |
 | 독립 사례·시각 근거 | 기존 실제 HWP/HWPX·한컴 PDF·메인테이너 시각 통과, 실제 Chrome 서식 및 결합열 검사. 합성 계약을 한컴 출력으로 간주하지 않는다. | 충족 |
 | baseline 변경 | 쪽수 원장에 독립 PDF를 근거로 두 입력의 2/2 행만 추가. 기존 기대값·허용치 변경 없음. | 충족 |
-| 주장과 검증 범위 | 동일 검증 SHA·명령·실행 결과와 미지원 경로를 Stage 7에 구분했다. CI와 정식 코드 검토는 미완료로 유지한다. | 충족 |
+| 주장과 검증 범위 | 동일 검증 SHA의 전체 로컬 검사와 최신 PR CI를 구분했다. 측정 세션·복구·출력 경로를 직접 읽었으며 아래 미지원/비용 한계를 개선 성공에 포함하지 않는다. | 충족 |
+
+## 세션·실패·출력 경계 검토
+
+- `SupplementalMetricStore::replace`는 전체 batch를 검사한 뒤 snapshot을 교체한다.
+  실패는 기존 snapshot을 보존하고 교체/owner drop은 retained style까지 무효화한다.
+  4,096개/키 4MiB, 개별 font 32MiB/합계 64MiB 한도를 확인했다.
+- 요청은 context·ticket·document/section revision·DPI에 묶인다. 응답의 누락/중복/descriptor
+  불일치·비정상 수치를 거부하며 batch edit 중 상태 변경을 거부한다.
+- 문서 교체에서 owner를 버리고, 서식 ID 변경에서는 활성 snapshot을 다시 연결한다.
+  JS epoch와 view/document/font generation 검사가 await 뒤 오래된 WASM handle 접근을 막는다.
+- VS16/ZWJ 등 다중 scalar는 문단 원문에서 먼저 식별한다. run/언어/저장 줄 경계를 넘어도
+  구성원 전체가 기존 폭 경로에 남으며, 다른 standalone 이모지의 cache가 부분 적용되지 않는
+  HWP/HWPX assertion을 확인했다. 전체 결합열 shaping 구현을 완료했다는 주장은 아니다.
+- portable 출력 진입은 활성 Canvas 폭을 거부한다. Studio의 동기 transaction은 출력 페이지
+  목록까지 portable 문맥에서 수집하고 finally에서 화면 문맥을 복원한다. 중첩·예외 검사도 있다.
+- descriptor 오류는 정확한 오류 문자열에만 반응하고 동일 문서/폰트 세대당 한 번 복구한다.
+  재paint가 예산을 충전하지 않으며 일반 오류나 오래된 실패를 새 화면의 복구로 오인하지 않는다.
+
+남는 한계: 브라우저의 실제 fallback face를 식별/보증하지 않으며 OS 간 동일 폭/모양을 보장하지 않는다.
+native/CanvasKit/SVG 보충 폭 활성화와 복합 이모지 shaping은 범위 밖이다.
+문서 재검사·동기 print SVG 수집 비용은 결과보고서의 큰 문서 warm 약 50ms/print 약 575ms 관측을
+유지한다. 무비용 또는 모든 문서에서 실시간이라는 주장을 하지 않는다. 이 검토에서 성능 A/B를 새로 측정하지 않았다.
+
+추가 집중 검증: `node --test rhwp-studio/tests/supplemental-text-metrics.test.ts
+rhwp-studio/tests/canvas-metric-session.test.ts rhwp-studio/tests/canvas-metric-recovery.test.ts`
+25 PASS/0 FAIL. unavailable Canvas 경고는 실패 경로를 검증하는 기대된 진단이다.
+Rust는 기존 review worktree의 검증 후보 `d3a189d5d`에서 다음 집중 명령을 실행했다.
+
+```bash
+cargo nextest run --locked --cargo-profile release-test \
+  --target-dir /home/edward/mygithub/rhwp/target/pr-review --tests --no-fail-fast \
+  -E 'test(/issue_7084/)'
+```
+
+32 PASS/0 FAIL, 9,833개는 필터에 따라 실행하지 않았다. 이는 전체 회귀 재실행이 아니다.
+캐시 재컴파일 3분 45초, 실제 집중 실행 0.075초, exit 0.
+nextest run `9a7a4259-c410-4c9f-850a-7c7b52786f74`이며 기존 nextest 버전/JUnit 경고는 유지한다.
+제품 코드 변경이 없고 같은 후보의 전체 검증·원격 Full 실행이 성공했으므로 전체 Cargo/WASM/시각
+재생성은 반복하지 않는다. 새 시각 판정을 만들어 이전 메인테이너 판정을 대체하지 않는다.
 
 ## 직접 시각 증적
 

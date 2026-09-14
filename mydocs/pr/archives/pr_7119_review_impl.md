@@ -20,3 +20,11 @@ GitHub approve·merge까지 승인된 것으로 해석하지 않는다.
 
 현재 소스 보존점은 `d3a189d5d`; 모든 원격 작업은 `task_m100_7084` PR branch에 한정한다.
 병합 전 중단 시 devel은 변경되지 않으며 WIP·전용 review worktree·공유 target을 임의 삭제하지 않는다.
+
+## 2026-09-14 실행 결과
+
+- 1번 완료: 원격 `6434189bc`의 CI·CodeQL·Render Diff·Adapter·Proptest 및 GHAS/Policy 성공 확인.
+- 2번 완료: 측정 snapshot→조판/문자 위치→Canvas paint, 세대 검증·결합열 보호·portable 복원·복구
+  경로를 직접 대조했다. 검토 범위의 병합 차단 결함은 발견하지 못했고 review 판정은 승인이다.
+- 3번 대기: review 기록은 먼저 로컬에 보존한다. 후행 기록 push 승인 후 새 head의 CI를 확인하고
+  별도 병합 승인을 받는다. GitHub review/comment, merge, issue close는 하지 않았다.
