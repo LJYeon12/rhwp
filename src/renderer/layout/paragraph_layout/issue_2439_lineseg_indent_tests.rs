@@ -101,6 +101,7 @@ fn synthetic_lineseg_indent_tree() -> crate::renderer::render_tree::PageRenderTr
         bullets: Vec::new(),
         kerning_measurement_context: None,
         horizontal_shaping_context: None,
+        supplemental_metrics: None,
     };
     let page_content = PageContent {
         page_index: 0,

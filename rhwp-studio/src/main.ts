@@ -1162,6 +1162,7 @@ function setupEventListeners(): void {
     const generation = `${state.detectedAt ?? 'none'}:${state.source ?? 'none'}:${state.count}`;
     if (generation === lastAppliedLocalFontGeneration) return;
     lastAppliedLocalFontGeneration = generation;
+    wasm.invalidateCanvasMetricFonts();
 
     if (canvasView.getRenderBackend() === 'canvaskit') {
       // CanvasKit은 browser CSS를 쓰지 않으므로 local SFNT 준비가 끝난 뒤 helper가 한 번 갱신한다.
@@ -1169,6 +1170,12 @@ function setupEventListeners(): void {
       return;
     }
     // Canvas2D는 Rust layout과 문서를 다시 열지 않고 현재 보이는 view만 새 family chain으로 그린다.
+    eventBus.emit('document-view-changed');
+  });
+
+  document.fonts.addEventListener('loadingdone', () => {
+    if (!canvasView || wasm.pageCount === 0) return;
+    wasm.invalidateCanvasMetricFonts();
     eventBus.emit('document-view-changed');
   });
 

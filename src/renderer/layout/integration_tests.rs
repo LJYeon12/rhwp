@@ -98,6 +98,7 @@ mod tests {
             bullets: Vec::new(),
             kerning_measurement_context: None,
             horizontal_shaping_context: None,
+            supplemental_metrics: None,
         };
 
         let page_content = PageContent {

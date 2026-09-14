@@ -279,6 +279,8 @@ fn context_display_overlay_preserves_frame_style_partitions_around_the_field() {
         ComposedTextRun {
             text: "\u{0017}".to_string(),
             display_text: Some("report.hwp".to_string()),
+            supplemental_metrics_blocked: false,
+            inserted_control_text: false,
             ..stale.clone()
         },
         ComposedTextRun {
@@ -1196,6 +1198,8 @@ fn test_split_runs_by_lang_korean_english() {
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 3);
@@ -1217,6 +1221,8 @@ fn test_split_runs_by_lang_no_split() {
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 1);
@@ -1234,6 +1240,8 @@ fn test_split_runs_by_lang_space_follows_prev() {
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 3);
@@ -1255,6 +1263,8 @@ fn test_split_runs_by_lang_empty() {
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 1);
@@ -1271,6 +1281,8 @@ fn test_split_runs_by_lang_english_only() {
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 1);
@@ -1371,6 +1383,8 @@ fn test_estimate_composed_line_width() {
             char_overlap: None,
             footnote_marker: None,
             display_text: None,
+            supplemental_metrics_blocked: false,
+            inserted_control_text: false,
         }],
         line_height: 400,
         baseline_distance: 320,
@@ -1853,6 +1867,8 @@ fn test_555_effective_text_for_metrics_uses_display_text_when_present() {
         char_overlap: None,
         footnote_marker: None,
         display_text: Some("《".to_string()), // 변환된 자모 (1 char in this case)
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     };
     let effective = super::effective_text_for_metrics(&run);
     assert_eq!(
@@ -1875,6 +1891,8 @@ fn test_555_effective_text_for_metrics_multi_jamo_cluster() {
         char_overlap: None,
         footnote_marker: None,
         display_text: Some("ᄃᆞᄫᆡ".to_string()), // 4 jamo chars
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     };
     let effective = super::effective_text_for_metrics(&run);
     assert_eq!(
@@ -1898,6 +1916,8 @@ fn test_555_effective_text_for_metrics_no_display_text_falls_back_to_text() {
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     };
     let effective = super::effective_text_for_metrics(&run);
     assert_eq!(
@@ -1922,6 +1942,8 @@ fn test_677_effective_text_for_metrics_preserves_f081c_filler() {
         char_overlap: None,
         footnote_marker: None,
         display_text: Some("□□".to_string()),
+        supplemental_metrics_blocked: false,
+        inserted_control_text: false,
     };
     let effective = super::effective_text_for_metrics(&run);
     assert_eq!(
@@ -2044,6 +2066,8 @@ fn test_kbu1_line_start_forbidden_retraction() {
             char_overlap: None,
             footnote_marker: None,
             display_text: None,
+            supplemental_metrics_blocked: false,
+            inserted_control_text: false,
         }],
         line_height: 400,
         baseline_distance: 320,

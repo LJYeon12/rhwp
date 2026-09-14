@@ -336,8 +336,17 @@ fn compute_char_positions_walk(
     let cluster_len = build_cluster_len(&chars);
     let has_custom_tabs = !style.tab_stops.is_empty() || style.auto_tab_right;
 
-    let char_width =
-        |i: usize| -> f64 { char_width_decision(&chars, &cluster_len, i, style).final_width_px };
+    let supplemental = super::super::supplemental_metrics::standalone_scalar_mask(text, style);
+    let char_width = |i: usize| -> f64 {
+        char_width_decision(
+            &chars,
+            &cluster_len,
+            i,
+            style,
+            supplemental.as_ref().is_some_and(|mask| mask[i]),
+        )
+        .final_width_px
+    };
 
     let mut tab_char_idx = 0usize; // inline_tabs 인덱스
     for i in 0..char_count {
@@ -435,8 +444,16 @@ impl TextMeasurer for EmbeddedTextMeasurer {
         let char_count = chars.len();
         let has_custom_tabs = !style.tab_stops.is_empty() || style.auto_tab_right;
 
+        let supplemental = super::super::supplemental_metrics::standalone_scalar_mask(text, style);
         let char_width = |i: usize| -> f64 {
-            char_width_decision(&chars, &cluster_len, i, style).final_width_px
+            char_width_decision(
+                &chars,
+                &cluster_len,
+                i,
+                style,
+                supplemental.as_ref().is_some_and(|mask| mask[i]),
+            )
+            .final_width_px
         };
 
         let mut total = 0.0;
@@ -768,6 +785,7 @@ pub(crate) fn resolved_to_text_style(
     if let Some(cs) = styles.char_styles.get(char_style_id as usize) {
         TextStyle {
             font_family: cs.font_family_for_lang(lang_index).to_string(),
+            supplemental_metrics: styles.supplemental_metrics.clone(),
             font_size: cs.font_size,
             color: cs.text_color,
             bold: cs.bold,
@@ -1105,6 +1123,7 @@ pub(crate) fn char_width_decision<'a>(
     cluster_len: &[u8],
     i: usize,
     style: &'a TextStyle,
+    allow_supplemental: bool,
 ) -> CharWidthDecision<'a> {
     let (font_size, ratio, _) = style_params(style);
     let c = chars[i];
@@ -1227,7 +1246,23 @@ pub(crate) fn char_width_decision<'a>(
             )
         }
     };
+    // Only replace the generic unknown-width decision, not DB hits or HWP's
+    // explicit width rules. Synthetic PUA boxes are painted as shapes, not glyphs.
     let dash_leader = is_dash_leader_run(chars, i);
+    let supplement = (allow_supplemental
+        && width_source == "heuristicHalfwidth"
+        && !dash_leader
+        && !c.is_whitespace()
+        && !c.is_control()
+        && crate::renderer::boxed_pua_number(c).is_none())
+    .then(|| {
+        let snapshot = style.supplemental_metrics.as_ref()?;
+        snapshot.lookup(snapshot.context(), style, c)
+    })
+    .flatten();
+    let (base_width_raw, width_source) = supplement
+        .map(|entry| (entry.natural_advance_px(), entry.width_source()))
+        .unwrap_or((base_width_raw, width_source));
     let base_width_px = if dash_leader {
         base_width_raw.min(font_size * 0.3)
     } else {
@@ -1292,8 +1327,17 @@ pub(crate) fn estimate_text_width_unrounded(text: &str, style: &TextStyle) -> f6
     let cluster_len = build_cluster_len(&chars);
     let char_count = chars.len();
 
-    let char_width =
-        |i: usize| -> f64 { char_width_decision(&chars, &cluster_len, i, style).final_width_px };
+    let supplemental = super::super::supplemental_metrics::standalone_scalar_mask(text, style);
+    let char_width = |i: usize| -> f64 {
+        char_width_decision(
+            &chars,
+            &cluster_len,
+            i,
+            style,
+            supplemental.as_ref().is_some_and(|mask| mask[i]),
+        )
+        .final_width_px
+    };
 
     let mut total = 0.0;
     for i in 0..char_count {
@@ -1375,11 +1419,18 @@ pub(crate) fn trace_char_width_decisions<'a>(
     let chars: Vec<char> = text.chars().collect();
     let cluster_len = build_cluster_len(&chars);
     let positions = compute_char_positions(text, style);
+    let supplemental = super::super::supplemental_metrics::standalone_scalar_mask(text, style);
     chars
         .iter()
         .enumerate()
         .map(|(i, &ch)| {
-            let mut decision = char_width_decision(&chars, &cluster_len, i, style);
+            let mut decision = char_width_decision(
+                &chars,
+                &cluster_len,
+                i,
+                style,
+                supplemental.as_ref().is_some_and(|mask| mask[i]),
+            );
             if ch == '\t' {
                 let advance = positions
                     .get(i + 1)

@@ -4223,7 +4223,7 @@ impl LayoutEngine {
             .iter()
             .enumerate()
             .map(|(pidx, p)| {
-                let mut comp = compose_paragraph(p);
+                let mut comp = crate::renderer::composer::compose_paragraph_in_context(p, styles);
                 // [Task #671] line_segs 비어 있는 셀 paragraph 의 단일 ComposedLine
                 // 압축 결과를 셀 가용 너비에 맞춰 다중 ComposedLine 으로 재분할.
                 // 측정/렌더링 일관성 보장 (table_layout.rs:1226 의 렌더링 경로와 동일).
@@ -7066,11 +7066,7 @@ impl LayoutEngine {
                                 for line in &composed.lines {
                                     for run in &line.runs {
                                         if !run.text.is_empty() {
-                                            let ts = resolved_to_text_style(
-                                                styles,
-                                                run.char_style_id,
-                                                run.lang_index,
-                                            );
+                                            let ts = run.text_style(styles);
                                             // [Task #555] PUA 옛한글 변환 후 자모 시퀀스 폭.
                                             text_w += estimate_text_width(
                                                 effective_text_for_metrics(run),
@@ -7108,11 +7104,7 @@ impl LayoutEngine {
                                         if run.text.is_empty() {
                                             continue;
                                         }
-                                        let ts = resolved_to_text_style(
-                                            styles,
-                                            run.char_style_id,
-                                            run.lang_index,
-                                        );
+                                        let ts = run.text_style(styles);
                                         // [Task #555] PUA 옛한글 변환 후 자모 시퀀스 폭.
                                         let run_w = estimate_text_width(
                                             effective_text_for_metrics(run),
@@ -7669,7 +7661,7 @@ impl LayoutEngine {
             let mut composed_paras: Vec<_> = cell
                 .paragraphs
                 .iter()
-                .map(|p| compose_paragraph(p))
+                .map(|p| crate::renderer::composer::compose_paragraph_in_context(p, styles))
                 .collect();
 
             // [Task #1073] 중첩 표 분할 연속 페이지(row_filter sr>0)에서 분할 시작 행보다
@@ -8487,7 +8479,7 @@ impl LayoutEngine {
         let mut total = 0.0;
         let cell_para_count = cell.paragraphs.len();
         for (pidx, p) in cell.paragraphs.iter().enumerate() {
-            let comp = compose_paragraph(p);
+            let comp = crate::renderer::composer::compose_paragraph_in_context(p, styles);
             let para_style = styles.para_styles.get(p.para_shape_id as usize);
             let is_last_para = pidx + 1 == cell_para_count;
             let spacing_before = if pidx > 0 {
@@ -9121,7 +9113,8 @@ impl LayoutEngine {
                 let para_is_empty_spacer = para.text.trim().is_empty() && para.controls.is_empty();
                 let starts_after_completed_multiline_table =
                     after_completed_multiline_table && !para_is_empty_spacer;
-                let mut comp = compose_paragraph(para);
+                let mut comp =
+                    crate::renderer::composer::compose_paragraph_in_context(para, styles);
                 if cell.text_direction == 0 {
                     crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
                         &mut comp,
@@ -9213,11 +9206,7 @@ impl LayoutEngine {
                                 .runs
                                 .iter()
                                 .map(|r| {
-                                    let ts = super::text_measurement::resolved_to_text_style(
-                                        styles,
-                                        r.char_style_id,
-                                        r.lang_index,
-                                    );
+                                    let ts = r.text_style(styles);
                                     if ts.font_size > 0.0 {
                                         ts.font_size
                                     } else {
@@ -9303,7 +9292,8 @@ impl LayoutEngine {
                         inner_width,
                     );
                     for (pi, para) in cell.paragraphs.iter().enumerate() {
-                        let mut comp = compose_paragraph(para);
+                        let mut comp =
+                            crate::renderer::composer::compose_paragraph_in_context(para, styles);
                         if cell.text_direction == 0 {
                             crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
                                 &mut comp,
@@ -10227,7 +10217,7 @@ impl LayoutEngine {
                 .filter(|(control_idx, _)| !stored_square_picture_controls.contains(control_idx))
                 .collect();
             let para_non_inline_h = para_top_and_bottom_h + para_other_non_inline_h;
-            let mut comp = compose_paragraph(p);
+            let mut comp = crate::renderer::composer::compose_paragraph_in_context(p, styles);
             if cell.text_direction == 0 {
                 crate::renderer::composer::recompose_horizontal_cell_lines_for_width(
                     &mut comp,
@@ -10589,11 +10579,7 @@ impl LayoutEngine {
                             .runs
                             .iter()
                             .map(|r| {
-                                let ts = super::text_measurement::resolved_to_text_style(
-                                    styles,
-                                    r.char_style_id,
-                                    r.lang_index,
-                                );
+                                let ts = r.text_style(styles);
                                 if ts.font_size > 0.0 {
                                     ts.font_size
                                 } else {

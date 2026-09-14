@@ -1141,6 +1141,10 @@ impl DocumentCore {
     pub(crate) fn rebuild_section_deferred_in_batch(&mut self, sec_idx: usize) {
         if self.batch_mode {
             self.styles = resolve_styles(&self.document.doc_info, self.dpi);
+            self.styles.supplemental_metrics = self
+                .canvas_metrics
+                .as_ref()
+                .and_then(super::super::canvas_metrics::CanvasMetricSession::active_snapshot);
             self.mark_section_dirty(sec_idx);
         } else {
             self.rebuild_section(sec_idx);

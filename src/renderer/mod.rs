@@ -9,6 +9,7 @@ use crate::model::control::Control;
 use crate::model::style::{LineSpacingType, UnderlineType};
 
 pub mod canvas;
+pub mod canvas_text_font;
 pub mod canvaskit_policy;
 pub mod composer;
 pub mod equation;
@@ -65,6 +66,7 @@ pub(crate) mod shaping_vertical;
 pub mod skia;
 pub(crate) mod static_svg;
 pub mod style_resolver;
+pub mod supplemental_metrics;
 pub mod svg;
 pub mod svg_fragment;
 pub mod svg_layer;
@@ -186,6 +188,10 @@ pub(crate) fn replay_positions_or_compute<'a>(
 /// 텍스트 렌더링 스타일
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TextStyle {
+    /// Session-only glyph metrics; never part of document/style serialization.
+    #[serde(skip)]
+    pub supplemental_metrics:
+        Option<std::sync::Arc<supplemental_metrics::SupplementalMetricSnapshot>>,
     /// 글꼴 이름
     pub font_family: String,
     /// 글꼴 크기 (px)
@@ -400,6 +406,7 @@ pub(crate) fn canvas_cluster_fit_scale(
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
+            supplemental_metrics: None,
             font_family: String::new(),
             font_size: 0.0,
             color: 0,
@@ -1910,7 +1917,7 @@ pub fn render_font_family_chain_for_weight(font_family: &str, bold: bool) -> Str
 ///
 /// [#3314] Canvas API가 요구하는 인용 형식을 유지하면서, 굵기 접미사 face
 /// 바로 뒤에 base family를 넣어 generic 폴백보다 먼저 선택되게 한다.
-/// 측정 경로에는 사용하지 않는다.
+/// 정적 DB 조회의 family key와는 다르다. Canvas 실측은 paint와 이 체인을 공유한다.
 pub fn canvas_font_family_chain(font_family: &str) -> String {
     let requested = internal_font_family_members(font_family);
     let Some(primary) = requested.first().copied() else {

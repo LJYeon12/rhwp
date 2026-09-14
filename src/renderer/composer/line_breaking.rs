@@ -3,13 +3,14 @@
 //! 문단 텍스트를 토큰화하고 줄 나눔을 수행한다.
 //! 한글 어절/글자, 영어 단어/하이픈, CJK 개별 분할을 지원한다.
 
+use super::supplemental_clusters::ParagraphMetricScope;
 use super::{find_active_char_shape, is_lang_neutral, ComposedParagraph};
 use crate::model::control::{Control, CTRL_CHAR_CODE_UNITS};
 use crate::model::paragraph::{CharShapeRef, ColumnBreakType, LineSeg, Paragraph};
 use crate::model::style::LineSpacingType;
 use crate::renderer::layout::{
     estimate_text_width, estimate_text_width_unrounded, hancom_regenerated_space_width,
-    is_cjk_char, resolved_letter_spacing, resolved_to_text_style,
+    is_cjk_char, resolved_letter_spacing,
 };
 use crate::renderer::layout_frame::{FrameRowMetrics, LayoutFrame, ParagraphBox, RowSegment};
 use crate::renderer::style_resolver::{detect_lang_category, ResolvedStyleSet};
@@ -326,6 +327,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
 
     let mut tokens = Vec::new();
     let mut i = 0;
+    let metric_scope = ParagraphMetricScope::new(text_chars, styles);
     let mut current_lang: usize = 0;
 
     while i < text_len {
@@ -346,7 +348,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                 i as u32
             };
             let style_id = find_active_char_shape(char_shapes, utf16_pos);
-            let ts = resolved_to_text_style(styles, style_id, current_lang);
+            let ts = metric_scope.style(styles, style_id, current_lang, i);
             let font_size = if ts.font_size > 0.0 {
                 ts.font_size
             } else {
@@ -368,7 +370,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                 i as u32
             };
             let style_id = find_active_char_shape(char_shapes, utf16_pos);
-            let ts = resolved_to_text_style(styles, style_id, current_lang);
+            let ts = metric_scope.style(styles, style_id, current_lang, i);
             let font_size = if ts.font_size > 0.0 {
                 ts.font_size
             } else {
@@ -425,7 +427,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                         current_lang = detected;
                         detected
                     };
-                    let ts = resolved_to_text_style(styles, style_id, lang);
+                    let ts = metric_scope.style(styles, style_id, lang, i);
                     let fs = if ts.font_size > 0.0 {
                         ts.font_size
                     } else {
@@ -458,7 +460,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                         current_lang = detected;
                         detected
                     };
-                    let ts = resolved_to_text_style(styles, style_id, lang);
+                    let ts = metric_scope.style(styles, style_id, lang, i);
                     let fs = if ts.font_size > 0.0 {
                         ts.font_size
                     } else {
@@ -473,6 +475,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
 
                 if !token_text.is_empty() {
                     let width = measure_token_width(
+                        &metric_scope,
                         &token_text,
                         start,
                         char_offsets,
@@ -485,6 +488,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                         (start..i)
                             .map(|ci| {
                                 measure_char_width(
+                                    &metric_scope,
                                     text_chars[ci],
                                     ci,
                                     char_offsets,
@@ -518,7 +522,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                 };
                 let style_id = find_active_char_shape(char_shapes, utf16_pos);
                 current_lang = detect_lang_category(ch);
-                let ts = resolved_to_text_style(styles, style_id, current_lang);
+                let ts = metric_scope.style(styles, style_id, current_lang, i);
                 let fs = if ts.font_size > 0.0 {
                     ts.font_size
                 } else {
@@ -554,7 +558,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                         i as u32
                     };
                     let follow_style = find_active_char_shape(char_shapes, follow_pos);
-                    let follow_ts = resolved_to_text_style(styles, follow_style, current_lang);
+                    let follow_ts = metric_scope.style(styles, follow_style, current_lang, i);
                     w += estimate_text_width_unrounded(&text_chars[i].to_string(), &follow_ts)
                         + inline_width_px_at(inline_controls, i);
                     i += 1;
@@ -597,7 +601,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                         };
                         let style_id = find_active_char_shape(char_shapes, utf16_pos);
                         let lang = 1usize; // English
-                        let ts = resolved_to_text_style(styles, style_id, lang);
+                        let ts = metric_scope.style(styles, style_id, lang, i);
                         let fs = if ts.font_size > 0.0 {
                             ts.font_size
                         } else {
@@ -623,7 +627,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                         current_lang = 1; // English
                         1
                     };
-                    let ts = resolved_to_text_style(styles, style_id, lang);
+                    let ts = metric_scope.style(styles, style_id, lang, i);
                     let fs = if ts.font_size > 0.0 {
                         ts.font_size
                     } else {
@@ -638,6 +642,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
 
                 if !token_text.is_empty() {
                     let width = measure_token_width(
+                        &metric_scope,
                         &token_text,
                         start,
                         char_offsets,
@@ -657,7 +662,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                             };
                             let sid = find_active_char_shape(char_shapes, u16p);
                             let lang = if is_lang_neutral(c) { current_lang } else { 1 };
-                            let ts = resolved_to_text_style(styles, sid, lang);
+                            let ts = metric_scope.style(styles, sid, lang, ci);
                             estimate_text_width_unrounded(&c.to_string(), &ts)
                                 + inline_width_px_at(inline_controls, ci)
                         })
@@ -682,7 +687,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                 };
                 let style_id = find_active_char_shape(char_shapes, utf16_pos);
                 current_lang = 1;
-                let ts = resolved_to_text_style(styles, style_id, current_lang);
+                let ts = metric_scope.style(styles, style_id, current_lang, i);
                 let fs = if ts.font_size > 0.0 {
                     ts.font_size
                 } else {
@@ -713,7 +718,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
             };
             let style_id = find_active_char_shape(char_shapes, utf16_pos);
             current_lang = detect_lang_category(ch);
-            let ts = resolved_to_text_style(styles, style_id, current_lang);
+            let ts = metric_scope.style(styles, style_id, current_lang, i);
             let fs = if ts.font_size > 0.0 {
                 ts.font_size
             } else {
@@ -749,7 +754,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                 current_lang = detected;
                 detected
             };
-            let ts = resolved_to_text_style(styles, style_id, lang);
+            let ts = metric_scope.style(styles, style_id, lang, i);
             let fs = if ts.font_size > 0.0 {
                 ts.font_size
             } else {
@@ -775,6 +780,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
 
 /// 토큰 텍스트의 폭을 글자별 언어 인식 측정으로 합산한다.
 fn measure_token_width(
+    metric_scope: &ParagraphMetricScope,
     text: &str,
     start_char_idx: usize,
     char_offsets: &[u32],
@@ -800,7 +806,7 @@ fn measure_token_width(
             current_lang = detected;
             detected
         };
-        let ts = resolved_to_text_style(styles, style_id, lang);
+        let ts = metric_scope.style(styles, style_id, lang, idx);
         total += estimate_text_width_unrounded(&ch.to_string(), &ts)
             + inline_width_px_at(inline_controls, idx);
     }
@@ -808,6 +814,7 @@ fn measure_token_width(
 }
 
 fn measure_char_width(
+    metric_scope: &ParagraphMetricScope,
     ch: char,
     char_idx: usize,
     char_offsets: &[u32],
@@ -826,7 +833,7 @@ fn measure_char_width(
     } else {
         detect_lang_category(ch)
     };
-    let style = resolved_to_text_style(styles, style_id, lang);
+    let style = metric_scope.style(styles, style_id, lang, char_idx);
     estimate_text_width_unrounded(&ch.to_string(), &style)
         + inline_width_px_at(inline_controls, char_idx)
 }
@@ -863,6 +870,7 @@ fn prepare_paragraph_projection(
     }
     let mut current_lang = 0usize;
     let mut base_positions = Vec::with_capacity(text_chars.len().saturating_add(1));
+    let metric_scope = ParagraphMetricScope::new(text_chars, styles);
     let mut kerning_scalar_styles = Vec::with_capacity(text_chars.len());
     let mut shaping_scalar_styles = Vec::with_capacity(text_chars.len());
     let mut hard_boundaries = vec![false; text_chars.len().saturating_add(1)];
@@ -883,7 +891,7 @@ fn prepare_paragraph_projection(
             .copied()
             .unwrap_or(index as u32);
         let char_shape_id = find_active_char_shape(&para.char_shapes, utf16_pos);
-        let text_style = resolved_to_text_style(styles, char_shape_id, language_index);
+        let text_style = metric_scope.style(styles, char_shape_id, language_index, index);
         let base_font_size = if text_style.font_size > 0.0 {
             text_style.font_size
         } else {
@@ -2515,6 +2523,7 @@ fn inline_control_requires_own_line(
     };
     let prefix: String = text_chars[line.start_idx..position].iter().collect();
     let prefix_width = to_hwp(measure_token_width(
+        &ParagraphMetricScope::new(text_chars, styles),
         &prefix,
         line.start_idx,
         &para.char_offsets,
