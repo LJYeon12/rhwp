@@ -2579,7 +2579,7 @@
   "reviewFinishedAtUTC": "2026-09-14T11:51:58.609821+00:00",
   "disposition": {
     "7099": "accept integrated tests only; devel conflict resolution",
-    "7109": "hold independent Hancom PDF evidence unavailable after conversion timeout",
+    "7109": "accept: independently reviewed user supplied Hancom PDF resolves missing visual evidence; scope and residuals in pr7109_hancom_review_evidence.json",
     "7134": "accept",
     "7136": "accept together with 7139",
     "7137": "accept with non-blocking CLI help omission",
@@ -2592,5 +2592,11 @@
     "pr7099_masked_native_p001.png": "7f083a62dd67b664ff66f0bb44069b7c5aacd38976aa30dbef188deee78d831c",
     "pr7099_masked_wasm_p001.png": "0174c13e99ec2377a6379993a0f3af97da11ecb9b524e3d84e03c01d0be07c72",
     "pr7099_ktx_before_p002.png": "d6b053127c5d037028ffabb23940bf871be393ebfa375f42738ff1fd77f25b21"
+  },
+  "supplementalEvidence": {
+    "pr7109": "pr7109_hancom_review_evidence.json",
+    "userSuppliedPDF": "tests/fixtures/multiline_cell_zero_positions/two_lines-2020.pdf",
+    "pdfSha256": "34c7d6208c7831cdbdf82a11fab01c924426725c6a0e2bf17cb1a484ed2719b8",
+    "includedInEvidenceUpdateCommit": true
   }
 }
