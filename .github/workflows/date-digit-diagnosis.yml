@@ -16,14 +16,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: upstream
-            ref: 0c9e28a481e662ff3b1823cfb1814084a13eb58b
-          - name: pr7161
-            ref: 68af356c36147e3a4c38c6e2caef52157e5958bd
+          - name: picture-ownership
+            ref: 0a3b0601af3ad6ef97702ae2329b292245cc2545
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: edwardkim/rhwp
+          repository: LJYeon12/rhwp
           ref: ${{ matrix.ref }}
           persist-credentials: false
       - name: Free disk space
