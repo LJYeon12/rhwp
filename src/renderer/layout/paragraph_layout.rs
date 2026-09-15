@@ -4498,7 +4498,24 @@ impl LayoutEngine {
         // 올라가, 테두리가 글자를 가로지른다(3143955 제목: 줄 상자 아래 171.6px, 전진 y
         // 162.0px, 실제로 그려진 선 159.7/163.7).
         let mut last_line_box_bottom: Option<f64> = None;
+        let stored_tac_assignment =
+            para.and_then(|p| crate::renderer::composer::stored_tac_line_assignment(p, composed));
         for line_idx in start_line..end {
+            let source_line_tacs;
+            let tac_offsets_px = if let Some(assign) = stored_tac_assignment.as_ref() {
+                source_line_tacs = tac_offsets_px
+                    .iter()
+                    .copied()
+                    .filter(|(_, _, ci)| {
+                        assign
+                            .iter()
+                            .any(|(control, owner)| control == ci && *owner == line_idx)
+                    })
+                    .collect::<Vec<_>>();
+                &source_line_tacs
+            } else {
+                &tac_offsets_px
+            };
             let comp_line = &composed.lines[line_idx];
             let mut current_line_reserved_tac_picture_height: Option<f64> = None;
             let mut endnote_used_auto_wrap_y = false;
@@ -4594,17 +4611,23 @@ impl LayoutEngine {
                     max_fs = crate::renderer::composed_line_max_font_size(comp_line, p, styles);
                 }
             }
-            let mut line_tac_offsets = tac_offsets_for_line(composed, &tac_offsets_px, line_idx);
+            let mut line_tac_offsets = tac_offsets_for_line(composed, tac_offsets_px, line_idx);
             if let Some(offsets) =
-                repeated_empty_tac_line_offset(composed, &tac_offsets_px, line_idx)
+                repeated_empty_tac_line_offset(composed, tac_offsets_px, line_idx)
             {
                 line_tac_offsets = offsets;
+            }
+            if stored_tac_assignment.is_some() {
+                line_tac_offsets = tac_offsets_px.to_vec();
             }
             let runs_all_whitespace = comp_line.runs.iter().all(|r| r.text.trim().is_empty());
             // 정렬 폭은 실제 run 방출과 같은 TAC 귀속을 쓴다. 끝 위치 TAC를 빼면
             // 그림은 그리되 Center/Right 시작점이 그림 폭만큼 우측으로 밀린다 (#3257).
             let mut line_tac_offsets_for_width =
-                tac_offsets_for_line_width(composed, &tac_offsets_px, line_idx);
+                tac_offsets_for_line_width(composed, tac_offsets_px, line_idx);
+            if stored_tac_assignment.is_some() {
+                line_tac_offsets_for_width = line_tac_offsets.clone();
+            }
             // 표의 그리기 전진 폭(#3396)과 정렬 폭을 맞춘다. 공통 flow_width_hu에
             // 더하면 여백을 이미 합산하는 표 전용 문단 경로에서 중복 계산된다.
             if let Some(para) = para {
@@ -4623,7 +4646,7 @@ impl LayoutEngine {
             let text_before_picture_line = text_line_is_picture_lead_in(
                 para,
                 composed,
-                &tac_offsets_px,
+                tac_offsets_px,
                 line_idx,
                 raw_lh,
                 max_fs,
@@ -5020,7 +5043,14 @@ impl LayoutEngine {
             let stored_segment_line_box_cannot_hold_margins = uses_stored_segment_geometry
                 && !hwp3_password_stored_segment_line_box
                 && styled_margin_left + margin_right >= effective_col_w;
+            // 저장 줄의 cs가 문단의 왼쪽 여백 자체이면 완성 줄 상자에 같은 여백을
+            // 두 번 더하지 않는다. 셀의 cs/안쪽 여백 계약과는 구분한다 (#6706).
+            let stored_inline_own_margin = uses_stored_segment_geometry
+                && cell_ctx.is_none()
+                && cs_is_own_margin
+                && stored_tac_assignment.is_some();
             let (effective_margin_left, effective_margin_right) = if physical_frame_rows
+                || stored_inline_own_margin
                 || hwp3_password_stored_segment_line_box
                 || stored_segment_line_box_cannot_hold_margins
             {
@@ -5286,7 +5316,7 @@ impl LayoutEngine {
                 crate::renderer::equation_tac_flow::compute_equation_only_tac_line_flow(
                     para,
                     composed,
-                    &tac_offsets_px,
+                    tac_offsets_px,
                     line_idx,
                     if cell_ctx.is_some() {
                         f64::INFINITY
@@ -5802,7 +5832,7 @@ impl LayoutEngine {
                 styles,
                 &cell_ctx,
                 &tab_stops,
-                &tac_offsets_px,
+                tac_offsets_px,
                 &shape_markers,
                 fn_positions,
                 &mut fn_marker_inserted,
@@ -5902,7 +5932,7 @@ impl LayoutEngine {
                 comp_line,
                 para,
                 bin_data_content,
-                &tac_offsets_px,
+                tac_offsets_px,
                 col_area,
                 cell_ctx.as_ref(),
                 &mut current_line_reserved_tac_picture_height,
@@ -5922,7 +5952,7 @@ impl LayoutEngine {
                 &mut line_node,
                 comp_line,
                 para,
-                &tac_offsets_px,
+                tac_offsets_px,
                 cell_ctx.as_ref(),
                 x,
                 y,
@@ -5982,7 +6012,7 @@ impl LayoutEngine {
                 para,
                 styles,
                 &cell_ctx,
-                &tac_offsets_px,
+                tac_offsets_px,
                 &line_tac_offsets,
                 &equation_tac_line_flow,
                 EquationTacLineVars {
@@ -6156,7 +6186,7 @@ impl LayoutEngine {
                 && line_is_leading_empty_equation_tac_guide(
                     para,
                     composed,
-                    &tac_offsets_px,
+                    tac_offsets_px,
                     line_idx,
                 );
             // [#6545] 저장 사다리가 이 줄에 **자기 vertical_pos** 를 줬다면 앞 줄이 예약한
@@ -6979,13 +7009,15 @@ impl LayoutEngine {
                 && !next_line_starts_at_run_end;
             let run_tacs: Vec<(usize, f64, usize)> = tac_offsets_px
                 .iter()
-                .filter(|(pos, _, _)| {
+                .filter(|(pos, _, ci)| {
                     *pos >= run_char_pos
                         && (*pos < run_char_end || (allow_end_tac && *pos == run_char_end))
                         // [#5727] 저장 lineseg 가 개체에 배정한 빈 줄이 소유한 경계
                         // TAC 는 다음 줄 run 에 다시 싣지 않는다 — 실으면 개체가 이
                         // 줄로 끌려 내려오고 텍스트가 개체 폭만큼 오른쪽으로 밀린다.
-                        && !tac_owned_by_prior_empty_line(composed, line_idx, *pos)
+                        && (para.and_then(|p| crate::renderer::composer::stored_tac_line_assignment(p, composed))
+                            .is_some_and(|assign| assign.iter().any(|(control, owner)| control == ci && *owner == line_idx))
+                            || !tac_owned_by_prior_empty_line(composed, line_idx, *pos))
                 })
                 .map(|(pos, w, ci)| (pos - run_char_pos, *w, *ci))
                 .collect();
