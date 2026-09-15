@@ -150,5 +150,58 @@
     "pr7152_en_982_after.jpg": "6b1ecb2e56948a032e1627c2c9be47d2751e77d5cc0862adf802fbb231f5da76",
     "pr7152_comparison.jpg": "c456d99b45b2a9e751c8aa55cdf0b2de034a3d9a8e2a5791b65f93433438586c"
   },
-  "image_note": "Browser native JPEG, no raster modification. Gallery uses CSS viewports to display toolbar regions and highlights; full originals retained."
+  "image_note": "Browser native JPEG, no raster modification. Gallery uses CSS viewports to display toolbar regions and highlights; full originals retained.",
+  "comment_core_images": {
+    "pr7152_core_field_before.jpg": {
+      "source": "pr7152_en_600_before.jpg",
+      "source_region": {
+        "x": 0,
+        "y": 84,
+        "width": 520,
+        "height": 40
+      },
+      "sha256": "014af255e460f8dacd1b6e1b391ee13574fe010340d5e4aae91998ebf4a53346"
+    },
+    "pr7152_core_field_after.jpg": {
+      "source": "pr7152_en_600_after.jpg",
+      "source_region": {
+        "x": 0,
+        "y": 84,
+        "width": 520,
+        "height": 40
+      },
+      "sha256": "266f4ceb70558a919d5e75bcff40544d31617aeb7314bfa90d52c35ce2481b5f"
+    },
+    "pr7152_core_edge_before.jpg": {
+      "source": "pr7152_en_962_before.jpg",
+      "source_region": {
+        "x": 632,
+        "y": 84,
+        "width": 330,
+        "height": 40
+      },
+      "sha256": "94046468f917006ed3a1eaf438afb7f9c7a9d3aed8b76a23c5f89ee6fc82b430"
+    },
+    "pr7152_core_edge_after.jpg": {
+      "source": "pr7152_en_962_after.jpg",
+      "source_region": {
+        "x": 632,
+        "y": 84,
+        "width": 330,
+        "height": 40
+      },
+      "sha256": "202cfc7ae6b4867bd5207f5a6b3e696bca1ec2748dc86dff4a602322d8caad48"
+    },
+    "pr7152_core_panel_after.jpg": {
+      "source": "pr7152_en_962_panel_after.jpg",
+      "source_region": {
+        "x": 600,
+        "y": 84,
+        "width": 230,
+        "height": 82
+      },
+      "sha256": "6fd3a0688c95647bd2795b22120a51d11480c3613de32d1c3e4bbb0e0d26a122"
+    }
+  },
+  "comment_core_image_method": "기존 전체 JPEG의 해당 영역만 로컬 HTML에서 표시하고 브라우저로 재캡처했다. 캡처 도구의 배율을 보정한 뒤 원본 크기로 표시되는지 직접 판독했다. UI·문구·버튼을 재생성하거나 덧그리지 않았다. 설명은 Markdown 본문에 있다."
 }
