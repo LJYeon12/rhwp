@@ -7,13 +7,13 @@ last_verified: 2026-09-15
 
 # PR #7152 — 기여자 코멘트 초안
 
-> 미게시 초안. 원격 push·새 head CI·Approve는 아직 수행하지 않았다. 게시 시 아래 이미지 경로를 실제 원격 asset commit SHA에 고정한 절대 raw URL로 교체한다.
+> 게시 준비 본문. 보정 code의 원격 push·새 CI를 완료했다. 문서 head 검사 뒤 Approve 리뷰로 게시한다. 게시 시 아래 이미지 경로를 실제 원격 asset commit SHA에 고정한 절대 raw URL로 교체한다.
 
 ---
 
 메뉴·툴바 영어 표시 작업 감사합니다. 기존 DOM 구조와 명령 ID를 유지하면서 문자열을 분리한 방향에 동의합니다. 마크업의 i18n 속성을 제외하면 이전 HTML과 동일하고, 참조 키 385개가 ko/en catalog에 모두 있는 것을 확인했습니다.
 
-영어 서식 도구 모음에서 두 가지 배치 결함을 재현했습니다. 기존 기여 커밋을 보존하면서 해결할 수 있는 범위여서, 별도 **메인터너 보정 커밋 `e917cffb9`**을 로컬에 준비했습니다.
+영어 서식 도구 모음에서 두 가지 배치 결함을 재현했습니다. 기존 기여 커밋을 보존하면서 해결할 수 있는 범위여서, 별도 **메인터너 보정 커밋 `e917cffb9`**을 PR 브랜치에 반영했습니다.
 
 ## 1. 600px: 스타일 선택 상자와 Font Set 겹침
 
@@ -54,6 +54,8 @@ last_verified: 2026-09-15
 
 ## 검증 결과
 
+보정 head `e917cffb9`의 [CI](https://github.com/edwardkim/rhwp/actions/runs/34946180534) · [CodeQL](https://github.com/edwardkim/rhwp/actions/runs/34946180544) · [Render Diff](https://github.com/edwardkim/rhwp/actions/runs/34946180054) · [Adapter inter-diff](https://github.com/edwardkim/rhwp/actions/runs/34946180483) · [Proptest roundtrip](https://github.com/edwardkim/rhwp/actions/runs/34946180539)가 통과했습니다.
+
 - 타입 검사·Studio production build 통과.
 - 단위 테스트: **1734 pass / 0 fail / 2 skip**.
 - 기존 검사를 포함한 반응형 E2E: **2666 pass / 0 fail**.
@@ -63,4 +65,4 @@ last_verified: 2026-09-15
 
 `Format Painter`의 가로 중앙 정렬은 정상입니다. 한 줄/두 줄 라벨 사이의 아이콘 세로 차이는 기존 한국어 UI에도 있는 방식이므로 이번 보정에서는 제외했습니다.
 
-**로컬 검토 판정은 “메인터너 보정 후 수용 가능”입니다.** 보정 커밋을 원격에 반영하고 최신 head CI를 확인한 뒤 최종 Approve를 진행하는 것이 적절합니다. #5852의 나머지 번역 단계는 별도 범위로 남깁니다.
+**로컬 검토 판정은 “메인터너 보정 후 수용 가능”입니다.** 보정 code의 CI가 통과했으며, 후행 리뷰 문서 head 검사까지 확인한 뒤 Approve합니다. #5852의 나머지 번역 단계는 별도 범위로 남깁니다.

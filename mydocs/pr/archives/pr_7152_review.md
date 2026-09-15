@@ -7,7 +7,7 @@ last_verified: 2026-09-15
 
 # PR #7152 — 메뉴·툴바 영어 표시 검토 기록
 
-**최종 판정: 메인터너 보정 후 수용 가능.** 원본에서 재현한 필드 겹침과 반응형 경계 잘림을 별도 로컬 커밋으로 보정했다. 보정 후보의 로컬 검증을 완료했으며, 원격 push·새 head CI·GitHub review·merge는 아직 수행하지 않았다. 이 문서는 사용자가 요청한 로컬 검토용 기록이다.
+**최종 판정: 메인터너 보정 후 수용 가능.** 원본에서 재현한 필드 겹침과 반응형 경계 잘림을 별도 로컬 커밋으로 보정했다. 보정 후보의 로컬 검증과 원 contributor branch push, 해당 code head의 새 CI를 완료했다. 사용자는 리뷰 문서 push와 코멘트를 포함한 Approve 게시까지 승인했다. 이 문서는 코드 CI가 끝난 뒤 준비한 후행 검토 기록이며, 문서 head 검사와 실제 Approve 결과는 GitHub 리뷰에 남긴다. merge·이슈 close는 이번 승인 범위에 없다.
 
 - [스크린샷 비교 페이지](../assets/pr7152_comparison.html)
 - [기여자에게 보낼 코멘트 초안](pr_7152_comment_draft.md)
@@ -25,7 +25,7 @@ last_verified: 2026-09-15
 | 메인터너 보정 / 검증 code head | `e917cffb9f70dfc73451a32fb4c1bf3ef9cffc8c` |
 | 로컬 branch | `codex/pr7152-review-20260915` — 원 commit 위에 직접 추가 |
 | Base | `devel`; PR API baseRefOid는 `a2cc0d236f0b348e00d6ee14af1ff86323a93c67` |
-| 초기 호환 확인 대상 | fetched `upstream/devel@769582fc856f162e57604b318d41414d7b026345`와 원 PR의 merge simulation 성공. 보정 후보를 최신 devel에 통합·실행한 검증은 별도 미실행 |
+| 초기 호환 확인 대상 | `upstream/devel@769582fc856f162e57604b318d41414d7b026345`와 보정 code head의 merge simulation 성공; tree `213f88467a9421bb73352ae3ebff362823cf00f5`. 보정 head의 GitHub CI도 별도로 완료 |
 | 원 PR 규모 | 1 commit, 7 files, +1157 / −358 |
 | 보정 규모 | CSS, overflow controller, responsive E2E의 3 files |
 | 작성 시점 참고값 | OPEN, draft=false, MERGEABLE/CLEAN, maintainerCanModify=true, reviewer=postmelee, labels/assignees 없음 |
@@ -108,26 +108,29 @@ E2E 환경: macOS의 별도 headless Chrome, `CHROME_PATH='/Applications/Google 
 
 음성 대조는 원 PR CSS/controller를 그대로 복원하고 새 회귀 검사를 적용한 실행이다. en/600의 −6.5px 간격, en/808의 10px overflow, en/962의 12px document overflow를 검출했다. 12px는 마지막 group border까지 포함하며 버튼 자체의 잘림은 11px다. 기존 한국어 모바일에서도 고정 88px 선택 상자의 겹침을 검출했다. 대조 후 보정 파일을 복원한 상태에서 전체 E2E를 다시 통과했다. 초기 음성 대조의 숨겨진 버튼 포커스 대기는 중단했고, 최종 보고서는 실제 트리거가 있을 때만 포커스 검사를 진행하도록 한 완결 실행이다.
 
-원 head의 GitHub aggregate checks는 녹색이었다. Rust lint·Native Skia·일부 archive/Frontend unit job은 SKIPPED였으며 실행 성공으로 세지 않는다. 보정 head는 push하지 않아 GitHub CI가 없다. **원 head CI를 보정 head CI로 재사용하지 않는다.** 확장 전체 패키징·Firefox/Safari 실행·모든 viewport와 번역 품질의 전수 검증은 이번 로컬 결과로 주장하지 않는다.
+원 head의 GitHub aggregate checks는 녹색이었다. Rust lint·Native Skia·일부 archive/Frontend unit job은 SKIPPED였으며 실행 성공으로 세지 않는다. 보정 head `e917cffb9`를 source branch에 push한 뒤 새 CI를 완료했다. **원 head CI를 보정 head CI로 재사용하지 않았다.** 확장 전체 패키징·Firefox/Safari 실행·모든 viewport와 번역 품질의 전수 검증은 이번 로컬 결과로 주장하지 않는다.
 
 ## 5. 조판 원칙·검증 입력·시각 증거 범위
 
 - 조판 원칙: **비해당**. 문서 줄 구성·측정/배치·pagination·paint·backend·golden·baseline을 변경하지 않았다. UI chrome의 CSS layout과 접근성 상태만 보정했다.
 - 검증 입력 커밋: **비해당**. 앱에서 생성한 빈 문서와 DOM을 사용했으며 외부 HWP/HWPX/PDF를 입력으로 사용하지 않았다.
 - [시각 검증 거버넌스](../../manual/verification/visual_verification_governance.md)의 Studio UI 경로에 따라 실제 브라우저 E2E와 전후 화면을 사용했다. PDF/SVG Visual Sweep·한컴 정답지 대조는 수행하지 않았다. UI 스크린샷을 문서 렌더링 호환성 증거로 해석하지 않는다.
-- 대표 조건 600/808/962/982px의 도구 모음을 직접 판독했다. 사용자는 원본 962px 경계 결함을 비교 페이지로 확인했고, **보정 후 화면에 대한 최종 사용자 확인은 이 기록을 통해 받는 단계**다.
+- 대표 조건 600/808/962/982px의 도구 모음을 직접 판독했다. 사용자는 원본 962px 경계 결함을 비교 페이지로 확인했고, 사용자는 보정 전후 자료와 수정한 코멘트 초안을 확인한 뒤 원격 push·게시·Approve 진행을 승인했다.
 - 파일은 브라우저가 반환한 원본 JPEG를 변환 없이 보존했다. 비교 HTML은 원본의 도구 모음 영역을 CSS로 잘라 보여 주고 경계만 표시한다. 래스터 원본에 덧그리거나 내용을 수정하지 않았다. 원본 해상도는 파일명과 같은 너비 × 863px이며 SHA-256은 [증적 JSON](../assets/pr7152_evidence.json)에 있다.
 - 별도 브라우저 캡처로 `innerWidth`와 이미지 크기를 대조했다. 도구의 viewport 변경 직후 이전 크기가 남은 중간 캡처와 잘못된 clip 캡처는 최종 증거에서 제외했다.
 
-## 6. 원격 반영 전 남은 조건
+## 6. 원격 code CI 및 후행 기록
 
-1. 사용자가 이 로컬 보정·리뷰·코멘트 초안을 확인하고 push 범위를 결정한다.
-2. PR head/source remote가 원 SHA와 같은지 다시 확인하고, 허용된 source branch에만 추가 commit을 반영한다. 기여자 이력은 rewrite하지 않는다.
-3. 보정 code를 포함한 최신 head의 관련 CI와 최신 devel 호환·merge 가능 상태를 확인한다. 필요한 최종 기록·오늘할일은 이때 실제 상태로 정리한다.
-4. GitHub review·comment·merge는 해당 단계 승인 후에 수행한다. 현재 판정은 원본 head의 그대로 승인 또는 merge 승인이 아니다.
+- 보정 code `e917cffb9f70dfc73451a32fb4c1bf3ef9cffc8c`를 `rubidus-api/rhwp:i18n/2-menus`에 fast-forward push했다. API head와 `ls-remote`가 동일했다. contributor commit은 rewrite하지 않았다.
+- code 변경 3개 파일은 `filter: unspecified`였고 `git lfs status`에 새 object가 없었다. 정본의 `GIT_LFS_SKIP_PUSH=1` dry-run 성공 후 같은 refspec으로 실제 push했다. 로컬 preview용 untracked 파일은 포함하지 않았다.
+- **보정 head CI 완료:** [CI](https://github.com/edwardkim/rhwp/actions/runs/34946180534) · [CodeQL](https://github.com/edwardkim/rhwp/actions/runs/34946180544) · [Render Diff](https://github.com/edwardkim/rhwp/actions/runs/34946180054) · [Adapter inter-diff](https://github.com/edwardkim/rhwp/actions/runs/34946180483) · [Proptest roundtrip](https://github.com/edwardkim/rhwp/actions/runs/34946180539). [정확한 head·run·job·check 상태](../assets/pr7152_code_ci_final.json). 이 실행은 `pull_request`, branch `i18n/2-menus`, head repository `rubidus-api/rhwp`의 새 code candidate 검증이다.
+- Frontend package gates를 실제 실행했다. CI에서도 Studio 단위 1734 pass / 0 fail / 2 skip, responsive 2666 pass / 0 fail, Studio·Chrome/Firefox 확장 빌드와 배포 계약 3 pass를 확인했다. [완료 로그 발췌](../assets/pr7152_code_ci_summary.log.txt). Rust lint·Native Skia·archive 등의 정책상 SKIPPED는 실행 성공으로 세지 않는다. CodeQL의 언어별 Analyze와 후속 GHAS 상태도 완료를 확인했다.
+- 이후 변경은 `mydocs/`의 리뷰·코멘트 초안·UI 증적뿐이다. 후행 문서는 같은 source branch 위에 별도 commit으로 push하고 [review-only fast-pass](../../manual/pr_review/review_only_fast_pass.md)의 candidate identity·최신 aggregate 조건을 확인한다.
+- 오늘할일은 정본 9.2의 선택 항목이다. source에 `mydocs/orders/20260915.md`가 없고 최신 devel에는 있어 신규 작성 시 add/add 충돌이 재현됐다. 다른 PR 기록의 전체 복사나 문서 목적의 devel 병합을 하지 않고 이번 갱신을 생략했다. 이번 PR의 전체 결과는 이 review와 impl에 보존하며, 최종 merge tree의 기존 오늘할일이 base와 동일한지도 검사한다.
+- 사용자는 **문서 push → 최종 head 검사 → 코멘트를 포함한 Approve 게시**를 승인했다. merge·PR close·issue close는 실행하지 않는다. 게시 직전 최신 head와 이미지 raw URL을 확인하며, Approve의 실제 시각·대상 SHA·본문은 GitHub review가 정본이다.
 
 ## Merge 후 contributor PR comment 계획
 
 [Visual Sweep 정본](../../manual/verification/visual_sweep_guide.md)과 위 거버넌스의 UI 예외를 연결하고, 기여자의 메뉴·툴바 문자열 분리 기여와 별도 보정 사유를 분리해 설명한다. 이번 증거는 빈 문서 1페이지의 UI, 2종 결함, 12개 로케일/스킨/테마 조합의 경계 검사이며 PDF pixel·ink·drift 지표는 비해당이다. 검토자의 직접 판독과 사용자 확인 범위를 구분한다.
 
-대표 이미지의 안정 경로는 `mydocs/pr/assets/pr7152_comparison.jpg`다. 실제 게시 시 asset이 포함된 commit이 원격에 존재하는지 확인하고, merge 후라면 `https://raw.githubusercontent.com/edwardkim/rhwp/<merge-commit-sha>/mydocs/pr/assets/pr7152_comparison.jpg`처럼 SHA를 고정한다. 게시 본문은 UTF-8 파일을 `--body-file`로 전달하고 API로 본문·이미지 링크를 재조회한다. 현재 코멘트는 초안이며 게시 승인이나 merge 완료를 뜻하지 않는다.
+이번 Approve 본문에는 `mydocs/pr/assets/pr7152_core_*.jpg` 5장을 사용한다. 전체 비교 이미지 `mydocs/pr/assets/pr7152_comparison.jpg`는 상세 review 자료로 유지한다. 실제 게시 시 asset이 포함된 commit이 원격에 존재하는지 확인하고, merge 후라면 `https://raw.githubusercontent.com/edwardkim/rhwp/<merge-commit-sha>/mydocs/pr/assets/pr7152_comparison.jpg`처럼 SHA를 고정한다. 게시 본문은 UTF-8 파일을 `--body-file`로 전달하고 API로 본문·이미지 링크를 재조회한다. 코멘트 게시는 사용자 승인을 받았으며, 후행 head 검사가 통과한 뒤 실제 Approve와 함께 게시한다. merge 완료를 뜻하지 않는다.
