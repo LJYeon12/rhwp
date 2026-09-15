@@ -941,6 +941,8 @@ struct EquationTacLineVars {
 /// [#2003] run 방출 루프의 줄-스코프 읽기 스칼라 묶음.
 #[derive(Clone, Copy)]
 struct RunEmitVars {
+    stored_tac_assignment: bool,
+    trailing_space_limit: usize,
     baseline: f64,
     raw_lh: f64,
     alignment: crate::model::style::Alignment,
@@ -1069,6 +1071,29 @@ pub(crate) fn trailing_space_width_after_last_inline_object(
         run_end_pos = run_start_pos;
     }
     width
+}
+
+/// 마지막 개체 앞의 공백은 내부 공백이다. 개체가 없으면 기존 말미 공백 수를 제한하지 않는다.
+fn trailing_space_limit_after_last_inline_object(
+    line: &ComposedLine,
+    last_inline_object_pos: Option<usize>,
+) -> usize {
+    last_inline_object_pos.map_or(usize::MAX, |pos| {
+        let end = line.char_start
+            + line
+                .runs
+                .iter()
+                .map(|run| {
+                    if run.char_overlap.is_some() {
+                        let chars: Vec<char> = run.text.chars().collect();
+                        crate::renderer::composer::char_overlap_advance_units(&chars)
+                    } else {
+                        run.text.chars().count()
+                    }
+                })
+                .sum::<usize>();
+        end.saturating_sub(pos)
+    })
 }
 
 fn tac_offsets_for_line_width(
@@ -1692,6 +1717,7 @@ fn converge_cell_overflow_char_spacing(
 #[allow(clippy::too_many_arguments)]
 fn compute_line_extra_spacing(
     comp_line: &ComposedLine,
+    trailing_space_limit: usize,
     styles: &ResolvedStyleSet,
     alignment: Alignment,
     in_cell: bool,
@@ -1776,7 +1802,12 @@ fn compute_line_extra_spacing(
         && matches!(alignment, Alignment::Justify | Alignment::Split)
     {
         let all_chars: Vec<char> = comp_line.runs.iter().flat_map(|r| r.text.chars()).collect();
-        let trailing_spaces = all_chars.iter().rev().take_while(|c| **c == ' ').count();
+        let trailing_spaces = all_chars
+            .iter()
+            .rev()
+            .take_while(|c| **c == ' ')
+            .count()
+            .min(trailing_space_limit);
         let visible_count = all_chars.len() - trailing_spaces;
         let leader_dashes = count_dash_leaders(&all_chars[..visible_count]);
         if leader_dashes > 0 {
@@ -1837,7 +1868,12 @@ fn compute_line_extra_spacing(
             .iter()
             .flat_map(|r| effective_text_for_metrics(r).chars())
             .collect();
-        let trailing_spaces = all_chars.iter().rev().take_while(|c| **c == ' ').count();
+        let trailing_spaces = all_chars
+            .iter()
+            .rev()
+            .take_while(|c| **c == ' ')
+            .count()
+            .min(trailing_space_limit);
         let visible_count = all_chars.len() - trailing_spaces;
         let interior_spaces = all_chars[..visible_count]
             .iter()
@@ -1999,7 +2035,8 @@ fn compute_line_extra_spacing(
             .rev()
             .flat_map(|r| r.text.chars().rev())
             .take_while(|c| *c == ' ')
-            .count();
+            .count()
+            .min(trailing_space_limit);
         let visible_count = total_char_count.saturating_sub(trailing_spaces);
         if visible_count <= 1 {
             (0.0, 0.0, 0.0)
@@ -5540,6 +5577,13 @@ impl LayoutEngine {
             let is_hancom_company_pua_logo_line =
                 is_hancom_company_pua_logo_line(comp_line, alignment);
 
+            let trailing_space_limit = trailing_space_limit_after_last_inline_object(
+                comp_line,
+                line_tac_offsets_for_width
+                    .iter()
+                    .map(|(pos, _, _)| *pos)
+                    .max(),
+            );
             let (extra_word_sp, extra_char_sp, extra_dash_sp) = if is_hancom_company_pua_logo_line {
                 // 이 줄의 trailing space는 뒤의 treat-as-char logo 그림 앞 공백이다.
                 // 회사명 자체에는 자간을 추가하지 않고 이 공백 하나가 남는 폭을 전부
@@ -5548,6 +5592,7 @@ impl LayoutEngine {
             } else {
                 compute_line_extra_spacing(
                     comp_line,
+                    trailing_space_limit,
                     styles,
                     alignment,
                     cell_ctx.is_some(),
@@ -5842,6 +5887,8 @@ impl LayoutEngine {
                 col_area,
                 &mut kerning_layout_session,
                 RunEmitVars {
+                    stored_tac_assignment: stored_tac_assignment.is_some(),
+                    trailing_space_limit,
                     baseline,
                     raw_lh,
                     alignment,
@@ -6492,6 +6539,8 @@ impl LayoutEngine {
         st: RunEmitState,
     ) -> RunEmitState {
         let RunEmitVars {
+            stored_tac_assignment,
+            trailing_space_limit,
             baseline,
             raw_lh,
             alignment,
@@ -6546,7 +6595,8 @@ impl LayoutEngine {
                     .iter()
                     .rev()
                     .take_while(|c| **c == ' ')
-                    .count();
+                    .count()
+                    .min(trailing_space_limit);
                 for (ri, r) in comp_line.runs.iter().enumerate().rev() {
                     if budget == 0 {
                         break;
@@ -7009,14 +7059,16 @@ impl LayoutEngine {
                 && !next_line_starts_at_run_end;
             let run_tacs: Vec<(usize, f64, usize)> = tac_offsets_px
                 .iter()
-                .filter(|(pos, _, ci)| {
+                .filter(|(pos, _, _)| {
                     *pos >= run_char_pos
-                        && (*pos < run_char_end || (allow_end_tac && *pos == run_char_end))
+                        && (*pos < run_char_end
+                            || ((allow_end_tac
+                                || (stored_tac_assignment && is_last_run_of_line(run_idx)))
+                                && *pos == run_char_end))
                         // [#5727] 저장 lineseg 가 개체에 배정한 빈 줄이 소유한 경계
                         // TAC 는 다음 줄 run 에 다시 싣지 않는다 — 실으면 개체가 이
                         // 줄로 끌려 내려오고 텍스트가 개체 폭만큼 오른쪽으로 밀린다.
-                        && (para.and_then(|p| crate::renderer::composer::stored_tac_line_assignment(p, composed))
-                            .is_some_and(|assign| assign.iter().any(|(control, owner)| control == ci && *owner == line_idx))
+                        && (stored_tac_assignment
                             || !tac_owned_by_prior_empty_line(composed, line_idx, *pos))
                 })
                 .map(|(pos, w, ci)| (pos - run_char_pos, *w, *ci))
@@ -9590,6 +9642,7 @@ mod issue_2809_split_alignment_tests {
         let line = split_label_line();
         let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
             &line,
+            usize::MAX,
             &ResolvedStyleSet::default(),
             Alignment::Split,
             true,
@@ -9627,6 +9680,7 @@ mod issue_2809_split_alignment_tests {
         let available_width = natural_width + 60.0;
         let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
             &trailing_line,
+            usize::MAX,
             &styles,
             Alignment::Justify,
             false,
@@ -9667,6 +9721,7 @@ mod issue_2809_split_alignment_tests {
         let total_text_width = estimate_text_width("다 같 이", &text_style);
         let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
             &line,
+            usize::MAX,
             &styles,
             Alignment::Split,
             true,
@@ -9717,6 +9772,7 @@ mod issue_2809_split_alignment_tests {
         // 꼬리말 마지막 줄 예외 (justify_spaces_only = true): 분배 없음
         let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
             &line,
+            usize::MAX,
             &ResolvedStyleSet::default(),
             Alignment::Justify,
             false,
@@ -9740,6 +9796,7 @@ mod issue_2809_split_alignment_tests {
         // 본문 중간 줄 justify (justify_spaces_only = false): 기존 자간 분배 유지
         let (_, extra_char_mid, _) = compute_line_extra_spacing(
             &line,
+            usize::MAX,
             &ResolvedStyleSet::default(),
             Alignment::Justify,
             false,
@@ -9787,6 +9844,7 @@ mod issue_4657_distribute_alignment_tests {
     fn distribute_extra(text: &str, char_count: usize, text_width: f64, avail: f64) -> f64 {
         let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
             &line(text),
+            usize::MAX,
             &ResolvedStyleSet::default(),
             Alignment::Distribute,
             false,

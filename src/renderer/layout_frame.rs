@@ -586,6 +586,9 @@ impl LayoutFrame {
         metrics_for: impl Fn(&[LineSeg]) -> Option<FrameRowMetrics>,
     ) -> bool {
         let checkpoint = self.clone();
+        // The frame owns the column quantum. A stored width equal to the raw
+        // pre-quantized width is still a cache miss, not permission to widen
+        // the frame (#7168). Hancom's 43202-unit page stores a 36000-unit row.
         let admitted = self.admit_stored_rows(line_segs, metrics_for).is_some();
         if !admitted {
             self.restore_checkpoint(checkpoint);
