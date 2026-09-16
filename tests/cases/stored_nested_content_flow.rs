@@ -13,8 +13,8 @@ fn nodes(name: &str) -> Vec<RenderNode> {
     let file = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("samples/stored-nested-content-flow")
         .join(name);
-    let core =
-        DocumentCore::from_bytes(&std::fs::read(file).expect("read fixture")).expect("parse fixture");
+    let core = DocumentCore::from_bytes(&std::fs::read(file).expect("read fixture"))
+        .expect("parse fixture");
     assert_eq!(core.page_count(), 1);
     let tree = core.build_page_render_tree(0).expect("render page");
     fn collect(node: &RenderNode, output: &mut Vec<RenderNode>) {
