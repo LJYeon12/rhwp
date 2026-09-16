@@ -12276,8 +12276,11 @@ impl LayoutEngine {
                 // 표 앞 가시 개체(그림/도형/표) 보유 문단은 test_521 계약(이중 가산
                 // 방지, host_seg=None)을 유지한다 — 사영이 이를 우회하면 ls 가 재가산
                 // 된다(156556059 p3 pi40: TAC 앞 Shape, +10.4px 반증 실측).
-                let projected_seg = if self.profile.get().hwpx_stored_layout()
-                    && all_segs_stored
+                // HWP5와 그 marker HWPX도 컨트롤 번호와 저장 줄 번호가 다르다.
+                // 앞 텍스트 줄의 음수 줄간격으로 표 뒤 흐름을 되돌리지 않도록,
+                // 표 높이를 담은 실제 소속 줄을 같은 사영으로 고른다.
+                let projected_seg = if (self.profile.get().hwp5_stored_pagination_layout()
+                    || (self.profile.get().hwpx_stored_layout() && all_segs_stored))
                     && only_invisible_before_tac
                 {
                     let table_h = para.controls.get(control_index).and_then(|c| match c {
