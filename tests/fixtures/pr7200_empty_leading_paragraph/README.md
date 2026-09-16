@@ -13,6 +13,11 @@ text를 빈 문자열로 바꾼 후 재포장했다. XML namespace 접두어와 
 부모 셀 하단 사이 여유 높이만큼 Bottom이, 절반만큼 Center가 이동해야 한다.
 이는 한컴 외형 일치 주장이 아니라 동일 배치 엔진의 정렬 불변식이다.
 
+메인터너 보정의 정식 `stored_nested_content_flow` 테스트는 첫 빈 줄의
+`line_height=1000 HU`와 `line_spacing=200 HU`가 예약한 16px도 확인한다.
+기존 배치는 이 공간을 표 원점에서 지웠으므로, 보정 후 Top 표 자체도 16px 내려간다.
+정렬 여유를 줄이기 위해 빈 문단을 측정에서 제거하는 방식은 사용하지 않는다.
+
 ```bash
 python3 mydocs/pr/assets/pr7200_review/check_empty_leading_paragraph.py \
   --rhwp-bin /path/to/rhwp --trees /tmp/pr7200-empty-check

@@ -2049,6 +2049,12 @@ pub(crate) fn calc_nested_split_rows(
     }
 }
 
+/// 초기화된 저장 앵커를 순차 배치한 셀-상대 좌표. 측정과 paint가 함께 소비한다.
+struct SequentialNestedCellLayout {
+    origins: Vec<Vec<Option<f64>>>,
+    bottom: f64,
+}
+
 /// [#2089] 가로쓰기 셀 본문 배치의 셀-스코프 스칼라 묶음.
 #[derive(Clone, Copy)]
 struct HorizontalCellVars {
@@ -4722,6 +4728,27 @@ impl LayoutEngine {
             let om_left = hwpunit_to_px(table.outer_margin_left as i32, self.dpi);
             let area_x = col_area.x + om_left;
             let area_w = (col_area.width - om_left).max(0.0);
+            // 글 앞/뒤 표는 셀의 텍스트 흐름과 별개인 부동 개체다. 자리차지
+            // 표의 가운데 배치 호환 규칙을 적용하면 명시한 LEFT/RIGHT 앵커가
+            // 사라진다. 한컴 PDF에서도 문단 기준 LEFT/offset=0은 셀 왼끝이다.
+            if !table.common.treat_as_char
+                && matches!(
+                    table.common.text_wrap,
+                    TextWrap::BehindText | TextWrap::InFrontOfText
+                )
+                && matches!(
+                    table.common.horz_rel_to,
+                    HorzRelTo::Para | HorzRelTo::Column
+                )
+            {
+                let offset =
+                    hwpunit_to_px(signed_hwpunit(table.common.horizontal_offset), self.dpi);
+                return match table.common.horz_align {
+                    HorzAlign::Left | HorzAlign::Inside => area_x + offset,
+                    HorzAlign::Center => area_x + (area_w - table_width) / 2.0 + offset,
+                    HorzAlign::Right | HorzAlign::Outside => area_x + area_w - table_width - offset,
+                };
+            }
             // [#5787] 칸 안 **어울림(SQUARE)** 중첩 표가 양의 horzOffset 을 선언하고
             // 그 자리로 표가 셀 안에 온전히 들어가면 한글은 저장 오프셋을 그대로
             // 쓴다 (2025571 당직근무 일지: 칸 왼끝+안여백+7975HU = 576.19 ↔ 한글
@@ -5108,6 +5135,11 @@ impl LayoutEngine {
         effective_valign: VerticalAlign,
         v: HorizontalCellVars,
     ) {
+        // 문단 테두리는 현재 셀 안에서만 연결한다. 중첩 셀도 별도 큐를 사용해
+        // 부모 셀/본문 문단의 외곽선 병합에 섞이지 않는다.
+        let parent_border_ranges = std::mem::take(&mut *self.para_border_ranges.borrow_mut());
+        let parent_border_scope = self.collect_cell_para_borders.replace(true);
+        let parent_border_override = self.border_box_override.replace(None);
         let HorizontalCellVars {
             cell_idx,
             r,
@@ -5235,6 +5267,8 @@ impl LayoutEngine {
         // 셀 내 문단 + 컨트롤 통합 레이아웃
         let mut para_y = text_y_start;
         let mut has_preceding_text = false;
+        let sequential_nested_layout =
+            self.sequential_nested_cell_layout(composed_paras, &cell.paragraphs, styles);
         for (cp_idx, (composed, para)) in composed_paras
             .iter()
             .zip(cell.paragraphs.iter())
@@ -5567,7 +5601,16 @@ impl LayoutEngine {
                     .lines
                     .iter()
                     .any(|line| line.runs.iter().any(|run| !run.text.trim().is_empty()));
-                if host_has_visible_text {
+                let host_has_border = styles
+                    .para_styles
+                    .get(composed.para_style_id as usize)
+                    .and_then(|style| style.border_fill_id.checked_sub(1))
+                    .and_then(|index| styles.border_styles.get(index as usize))
+                    .is_some_and(|border| {
+                        border.fill_color.is_some()
+                            || border.borders.iter().any(super::para_border_is_visible)
+                    });
+                if host_has_visible_text || host_has_border {
                     let is_last_para = cp_idx + 1 == composed_paras.len();
                     let numbered_comp = if start_line == 0 && end_line > start_line {
                         self.apply_paragraph_numbering(
@@ -5602,7 +5645,7 @@ impl LayoutEngine {
                         Some(bin_data_content),
                         stored_square_picture_wrap_anchor.as_ref(),
                     );
-                    has_preceding_text = true;
+                    has_preceding_text |= host_has_visible_text;
                 }
             }
 
@@ -6786,6 +6829,13 @@ impl LayoutEngine {
                             .flatten();
                         let nested_y = if let Some(offset) = stored_square_offset {
                             para_y_before_compose + hwpunit_to_px(offset, self.dpi)
+                        } else if let Some(origin) = sequential_nested_layout
+                            .as_ref()
+                            .and_then(|layout| layout.origins[cp_idx][ctrl_idx])
+                        {
+                            // 빈 줄에도 점유 높이가 있다. 가시 글자 유무로 원점을 다시
+                            // 선택하지 않고 정렬용 높이와 같은 계획의 원점을 사용한다.
+                            inner_area.y + origin
                         } else if has_preceding_text {
                             para_y
                         } else {
@@ -7441,6 +7491,10 @@ impl LayoutEngine {
                 }
             }
         }
+        self.render_para_border_groups(tree, composed_paras, cell_node, styles, &inner_area);
+        *self.para_border_ranges.borrow_mut() = parent_border_ranges;
+        self.collect_cell_para_borders.set(parent_border_scope);
+        self.border_box_override.set(parent_border_override);
         self.cell_has_square_float.set(prev_cell_square_float);
     }
 
@@ -8343,6 +8397,102 @@ impl LayoutEngine {
         Some(anchor_height.unwrap_or(height))
     }
 
+    /// 저장 사다리를 재사용할 수 없는 완전한 셀의 중첩 표 원점과 점유 하단.
+    /// 줄의 점유 공간과 글자의 가시성은 별개다. 빈 문단도 구성된 줄 높이만큼
+    /// 전진하며, 이 결과에서 높이를 재고 같은 원점에 실제 표를 배치한다.
+    fn sequential_nested_cell_layout(
+        &self,
+        composed_paras: &[ComposedParagraph],
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+    ) -> Option<SequentialNestedCellLayout> {
+        if composed_paras.len() != paragraphs.len()
+            || crate::renderer::cell_vpos_ladder_is_intact(paragraphs)
+            || paragraphs
+                .iter()
+                .any(crate::renderer::para_has_no_stored_line_segs)
+            || !paragraphs
+                .iter()
+                .any(|p| p.controls.iter().any(|c| matches!(c, Control::Table(_))))
+        {
+            return None;
+        }
+        let mut layout = SequentialNestedCellLayout {
+            origins: paragraphs
+                .iter()
+                .map(|p| vec![None; p.controls.len()])
+                .collect(),
+            bottom: 0.0,
+        };
+        let mut flow_y = 0.0;
+        for (pidx, (para, composed)) in paragraphs.iter().zip(composed_paras).enumerate() {
+            let style = styles.para_styles.get(para.para_shape_id as usize);
+            let has_block_table = para
+                .controls
+                .iter()
+                .any(|c| matches!(c, Control::Table(t) if !t.common.treat_as_char));
+            let spacing_before = if pidx > 0 && !has_block_table {
+                style.map_or(0.0, |s| s.spacing_before)
+            } else {
+                0.0
+            };
+            let paragraph_top = flow_y + spacing_before;
+            if !has_block_table {
+                flow_y += self.calc_para_lines_height(
+                    &composed.lines,
+                    para,
+                    false,
+                    true,
+                    pidx,
+                    paragraphs.len(),
+                    style,
+                    styles,
+                );
+            }
+            let para_top_hu = para.line_segs.first().map_or(0, |s| s.vertical_pos);
+            for group in crate::renderer::float_placement::nested_table_groups(para) {
+                let line_top = group.line.map_or(0.0, |line| {
+                    hwpunit_to_px(
+                        para.line_segs[line]
+                            .vertical_pos
+                            .saturating_sub(para_top_hu),
+                        self.dpi,
+                    )
+                });
+                let group_top = paragraph_top + line_top;
+                let mut group_advance = 0.0_f64;
+                for ci in group.controls {
+                    let Control::Table(table) = &para.controls[ci] else {
+                        continue;
+                    };
+                    let origin = group_top
+                        + if group.side_by_side {
+                            0.0
+                        } else {
+                            group_advance
+                        };
+                    layout.origins[pidx][ci] = Some(origin);
+                    let height = self.calc_nested_table_height(table, styles)
+                        + if pidx + 1 == paragraphs.len() {
+                            para_relative_float_table_lead(table, self.dpi)
+                        } else {
+                            0.0
+                        };
+                    layout.bottom = layout.bottom.max(origin + height);
+                    if let Some(advance) = self.nested_table_flow_advance(table, para, height) {
+                        group_advance = if group.side_by_side {
+                            group_advance.max(advance)
+                        } else {
+                            group_advance + advance
+                        };
+                        flow_y = flow_y.max(group_top + group_advance);
+                    }
+                }
+            }
+        }
+        Some(layout)
+    }
+
     /// 셀 내 중첩 표가 실제로 차지하는 하단 위치를 계산한다.
     ///
     /// 일부 HWP/HWPX는 중첩 표 문단의 LINE_SEG.line_height에 내부 표의 실제
@@ -8354,6 +8504,10 @@ impl LayoutEngine {
         paragraphs: &[Paragraph],
         styles: &ResolvedStyleSet,
     ) -> f64 {
+        if let Some(layout) = self.sequential_nested_cell_layout(composed_paras, paragraphs, styles)
+        {
+            return layout.bottom;
+        }
         // [#4533] `para_top + nested_h` 는 "중첩 표가 앵커 문단 아래로 흐른다"는
         // 가정이다. 앵커 줄이 셀 하단에 있고 표가 셀 상단에 절대배치되는 서식
         // 문서(기장군 20420347: para_top 740.9 + 601.8 = 1342.6 vs 선언 794.1)
@@ -8375,49 +8529,10 @@ impl LayoutEngine {
         } else {
             0.0
         };
-        // 저장 앵커가 없는 셀은 배치처럼 문단을 순서대로 전진시킨다.
-        // 모든 vpos=0을 셀 상단으로 읽으면 뒤 문단의 중첩 표가 앞 텍스트를
-        // 덮는 것으로 측정되어 Center/Bottom의 정렬 여유가 과대해진다.
-        // 이어지는 rowspan 조각은 이미 출력한 문단 구성을 비울 수 있다.
-        // 전체 문단 구성이 있는 경우에만 그 결과로 순차 커서를 계산한다.
-        let sequential = composed_paras.len() == paragraphs.len()
-            && !crate::renderer::cell_vpos_ladder_is_intact(paragraphs)
-            && paragraphs
-                .iter()
-                .all(|p| !crate::renderer::para_has_no_stored_line_segs(p))
-            && paragraphs
-                .iter()
-                .any(|p| p.controls.iter().any(|c| matches!(c, Control::Table(_))));
-        let mut flow_y = 0.0;
         paragraphs
             .iter()
             .enumerate()
             .map(|(pidx, p)| {
-                let style = styles.para_styles.get(p.para_shape_id as usize);
-                // 블록 표 호스트는 글자를 그리더라도 문단 줄의 반환 높이를
-                // 소비하지 않는다(render_table_cells의 has_block_table_ctrl 경로).
-                let has_block_table = p
-                    .controls
-                    .iter()
-                    .any(|c| matches!(c, Control::Table(t) if !t.common.treat_as_char));
-                let spacing_before = if pidx > 0 && !has_block_table {
-                    style.map_or(0.0, |s| s.spacing_before)
-                } else {
-                    0.0
-                };
-                let sequential_top = flow_y + spacing_before;
-                if sequential && !has_block_table {
-                    flow_y += self.calc_para_lines_height(
-                        &composed_paras[pidx].lines,
-                        p,
-                        false,
-                        true,
-                        pidx,
-                        paragraphs.len(),
-                        style,
-                        styles,
-                    );
-                }
                 // [#6697 후속] 문단 기준 어울림 중첩 표의 `vertOffset` 리드는 렌더
                 // (`nested_y`)와 흐름 계상(`cell_units_uncached`)이 이미 싣는데, 세로
                 // 정렬용 콘텐츠 높이가 그 몫을 모르면 표는 리드만큼 내려가고 콘텐츠
@@ -8450,7 +8565,6 @@ impl LayoutEngine {
                     .collect();
                 let para_top_hu = p.line_segs.first().map_or(0, |s| s.vertical_pos);
                 let mut nested_h = 0.0f64;
-                let mut nested_flow_bottom = None::<f64>;
                 for group in groups {
                     let height = if group.side_by_side {
                         group
@@ -8468,33 +8582,6 @@ impl LayoutEngine {
                         0.0
                     };
                     nested_h = nested_h.max(top + height);
-                    if sequential {
-                        let advances =
-                            group
-                                .controls
-                                .iter()
-                                .filter_map(|&ci| match &p.controls[ci] {
-                                    Control::Table(t) => {
-                                        self.nested_table_flow_advance(t, p, heights[ci])
-                                    }
-                                    _ => None,
-                                });
-                        let advance =
-                            advances.reduce(
-                                |a, b| {
-                                    if group.side_by_side {
-                                        a.max(b)
-                                    } else {
-                                        a + b
-                                    }
-                                },
-                            );
-                        if let Some(advance) = advance {
-                            let bottom = top + advance;
-                            nested_flow_bottom =
-                                Some(nested_flow_bottom.map_or(bottom, |b| b.max(bottom)));
-                        }
-                    }
                 }
                 if nested_h <= 0.0 {
                     0.0
@@ -8504,14 +8591,7 @@ impl LayoutEngine {
                         .first()
                         .map(|s| hwpunit_to_px(s.vertical_pos, self.dpi))
                         .unwrap_or(0.0);
-                    let candidate = if sequential {
-                        sequential_top + nested_h
-                    } else {
-                        para_top + nested_h
-                    };
-                    if let Some(advance) = nested_flow_bottom {
-                        flow_y = flow_y.max(sequential_top + advance);
-                    }
+                    let candidate = para_top + nested_h;
                     // 절대배치의 직접 증거는 "표의 공간이 호스트 줄 **위**에 이미
                     // 예약됨"이다 — 직전 저장 줄 끝→호스트 vpos 갭이 표 높이만큼
                     // 벌어진다(기장군 612 vs 표 598 · 수면 작성례 563 vs 536.5 —
@@ -8532,8 +8612,7 @@ impl LayoutEngine {
                     // 기술하지 못한다(49308: nested_h 2664 vs ladder_end 122 —
                     // 캡하면 쪽수 70->69 로 한글 71쪽에서 멀어짐). 표가 사다리
                     // 안에 들어갈 때만 절대배치 캡을 허용한다.
-                    let anchored_not_flowing = !sequential
-                        && ladder_end > 0.0
+                    let anchored_not_flowing = ladder_end > 0.0
                         && nested_h <= ladder_end
                         && prev_end.is_finite()
                         && gap_before >= nested_h * 0.85;

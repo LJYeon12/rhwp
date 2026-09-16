@@ -13,8 +13,16 @@ fn nodes(name: &str) -> Vec<RenderNode> {
     let file = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("samples/stored-nested-content-flow")
         .join(name);
+    nodes_from_file(&file)
+}
+
+fn nodes_from_file(file: &Path) -> Vec<RenderNode> {
     let core = DocumentCore::from_bytes(&std::fs::read(file).expect("read fixture"))
         .expect("parse fixture");
+    nodes_from_core(&core)
+}
+
+fn nodes_from_core(core: &DocumentCore) -> Vec<RenderNode> {
     assert_eq!(core.page_count(), 1);
     let tree = core.build_page_render_tree(0).expect("render page");
     fn collect(node: &RenderNode, output: &mut Vec<RenderNode>) {
@@ -26,6 +34,30 @@ fn nodes(name: &str) -> Vec<RenderNode> {
     let mut output = Vec::new();
     collect(&tree.root, &mut output);
     output
+}
+
+#[test]
+fn empty_leading_paragraph_keeps_its_line_space_in_nested_table_alignment() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pr7200_empty_leading_paragraph");
+    let top = nodes_from_file(&fixture.join("empty-first-top.hwpx"));
+    let outer = table(&top, 320.0);
+    let nested = table(&top, 160.0);
+    // 한컴 PDF의 LEFT/offset=0 앵커는 x=48.32px다. 가운데 배치(128px) 금지.
+    assert!((nested.x - 48.32).abs() < 1.0);
+    // The source line reserves (1000 + 200) HWPUNIT at 96 DPI.
+    // An empty glyph run does not erase this explicit line box.
+    assert!((nested.y - outer.y - 16.0).abs() < 0.6);
+    let slack = outer.y + outer.height - nested.y - nested.height;
+    for (align, fraction) in [("center", 0.5), ("bottom", 1.0)] {
+        let aligned = nodes_from_file(&fixture.join(format!("empty-first-{align}.hwpx")));
+        let advance = table(&aligned, 160.0).y - nested.y;
+        assert!(
+            (advance - slack * fraction).abs() < 0.6,
+            "empty/{align}: advance {advance}, expected {}",
+            slack * fraction
+        );
+    }
 }
 
 fn text(nodes: &[RenderNode], expected: &str) -> BoundingBox {
@@ -137,5 +169,61 @@ fn nested_alignment_uses_rewrapped_text_and_actual_float_flow() {
                 slack * fraction
             );
         }
+    }
+}
+
+#[test]
+fn hancom_recomposed_lines_and_nested_table_match_pdf_positions() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pr7200_hancom_recomposed");
+    // 같은 HWP를 Hancom 12.0.0.4605로 출력한 PDF 텍스트 상단(96 DPI).
+    // 원본의 잘못된 단일 저장 줄은 별도 합성 경계로 유지한다.
+    for (align, expected) in [
+        (
+            "top",
+            [127.718, 150.094, 172.629, 195.164, 217.540, 259.734],
+        ),
+        (
+            "center",
+            [244.550, 267.086, 289.621, 311.997, 334.532, 376.566],
+        ),
+        (
+            "bottom",
+            [361.542, 384.078, 406.453, 428.989, 451.524, 493.558],
+        ),
+    ] {
+        let rendered = nodes_from_file(&fixture.join(format!("width-{align}.hwp")));
+        let text_nodes: Vec<_> = rendered.iter().filter(|node| {
+            matches!(&node.node_type, RenderNodeType::TextRun(run) if !run.text.trim().is_empty())
+        }).collect();
+        assert_eq!(text_nodes.len(), expected.len(), "{align}: 5줄과 End 보존");
+        for (node, pdf_y) in text_nodes.iter().zip(expected) {
+            assert!((node.bbox.x - 48.774).abs() < 1.0, "{align}: PDF 가로 원점");
+            assert!(
+                (node.bbox.y - pdf_y).abs() < 1.0,
+                "{align}: y={} PDF={pdf_y}",
+                node.bbox.y
+            );
+        }
+        assert!((table(&rendered, 160.0).x - 48.32).abs() < 1.0);
+        // PDF의 End 문단 테두리는 마지막 줄간격까지 포함한 약 22.5px다.
+        // 테두리 연결이 꺼진 셀 문단을 본문/부모 셀 테두리와 병합하지 않는다.
+        assert!(
+            rendered.iter().any(|node| {
+                matches!(node.node_type, RenderNodeType::Rectangle(_))
+                    && (node.bbox.width - 160.0).abs() < 0.5
+                    && (node.bbox.y - expected[5]).abs() < 1.0
+                    && (node.bbox.height - 22.5).abs() < 0.5
+            }),
+            "{align}: 셀의 마지막 문단 테두리 누락/축소"
+        );
+        assert!(
+            rendered.iter().any(|node| {
+                matches!(node.node_type, RenderNodeType::Rectangle(_))
+                    && (node.bbox.width - 384.0).abs() < 0.5
+                    && node.bbox.height > 400.0
+            }),
+            "{align}: TAC 표 호스트의 본문 문단 테두리 누락"
+        );
     }
 }

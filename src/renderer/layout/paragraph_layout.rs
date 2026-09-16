@@ -4563,6 +4563,7 @@ impl LayoutEngine {
         // 올라가, 테두리가 글자를 가로지른다(3143955 제목: 줄 상자 아래 171.6px, 전진 y
         // 162.0px, 실제로 그려진 선 159.7/163.7).
         let mut last_line_box_bottom: Option<f64> = None;
+        let mut last_line_border_bottom: Option<f64> = None;
         let stored_tac_assignment =
             para.and_then(|p| crate::renderer::composer::stored_tac_line_assignment(p, composed));
         for line_idx in start_line..end {
@@ -6400,6 +6401,11 @@ impl LayoutEngine {
                 }
                 y = next_y;
             } else if is_cell_last_line && cell_ctx.is_some() {
+                // 셀 정렬의 점유 높이에서 마지막 줄간격을 빼더라도 문단 테두리는
+                // 원래 줄 상자와 후행 간격을 둘러싼다. paint 영역을 흐름 전진에
+                // 다시 가산하지 않는다 (한컴 저장 1056+632HU 문단 테두리).
+                last_line_border_bottom =
+                    Some(y + line_flow_height + render_line_spacing_px.max(0.0));
                 last_line_box_bottom = Some(y + line_flow_height);
                 y += line_flow_height;
             } else if skip_advance_empty_line {
@@ -6426,11 +6432,13 @@ impl LayoutEngine {
         // Task #463: 셀 안 단락은 본문 큐에 leakage 하지 않도록 cell_ctx 게이팅.
         // 셀 외곽선은 별도 경로(table_layout/border_rendering)에서 처리되므로
         // 본문 단락의 연속 외곽선 merge 가 셀 단락 좌표/시그니처에 의해 깨지지 않게 한다.
-        if para_border_fill_id > 0 && cell_ctx.is_none() {
+        if para_border_fill_id > 0 && (cell_ctx.is_none() || self.collect_cell_para_borders.get()) {
             // [#5711] 줄간격이 음수인 문단은 전진값 `y` 가 마지막 줄 상자 아래보다 위에
             // 있다. 그 값을 테두리 아래 변으로 쓰면 테두리가 글자를 가로지른다. 다음 문단
             // 시작 y 는 종전대로 두어 문단 간 간격 계약은 바꾸지 않는다.
-            let border_bottom = last_line_box_bottom.map_or(y, |bottom| y.max(bottom));
+            let border_bottom = last_line_border_bottom
+                .or(last_line_box_bottom)
+                .map_or(y, |bottom| y.max(bottom));
             let bg_height = border_bottom - bg_y_start;
             if bg_height > 0.0 {
                 // margin_left/margin_right는 이미 px 단위 (style_resolver에서 변환됨)

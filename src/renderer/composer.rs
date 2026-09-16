@@ -1147,7 +1147,10 @@ fn compose_lines(para: &Paragraph) -> Vec<ComposedLine> {
             {
                 line_seg.text_height
             } else {
-                line_seg.line_height
+                // 글자 테두리 등으로 텍스트 점유 높이가 명목 줄 높이를 넘을 수
+                // 있다. 한컴 저장 줄(1000/1056/632)은 1688HU씩 전진한다.
+                // 공통 구성 결과에 점유 높이를 싣고 측정과 paint가 함께 소비한다.
+                line_seg.line_height.max(line_seg.text_height)
             };
 
             let mut push_segment = |segment_start: usize, segment_end: usize, has_break: bool| {

@@ -1,0 +1,52 @@
+# PR #7200 한컴 재조판 대조군
+
+원 PR의 `samples/stored-nested-content-flow/width-*.hwp`를 대체하거나 이름만 바꾼 복사본이 아니다.
+원본 합성 HWP는 200자 문단에 저장 줄이 1개이며 한컴 PDF에서 5개 줄의 글자가 겹친다.
+원본 3개와 원래 변환 PDF는 그대로 보존한다. 이 폴더는 정상 저장 줄에서 엔진의 위치·문단 테두리를
+독립적으로 확인하기 위해 한컴이 줄 정보를 다시 계산한 대조군이다.
+
+## 생성 절차
+
+1. 기존 `width-top.hwp`를 HWP MCP의 engine 2020으로 HWPX에 저장했다.
+2. `Contents/section0.xml`의 `hp:linesegarray`만 제거했다. 텍스트, 셀 크기, 표 위치,
+   테두리와 글자 스타일은 유지했다. Center/Bottom은 바깥 셀 `hp:subList@vertAlign`만 바꿨다.
+3. 이 HWPX들을 같은 엔진에서 HWP로 저장하여 한컴이 유효한 줄 캐시를 생성하게 했다.
+4. 최종 HWP 각각을 같은 엔진에서 PDF로 변환했다. 실제 엔진은 Hancom **12.0.0.4605**다.
+   start → status `succeeded`/`terminal=true` → download 순서로 완료를 확인했다.
+
+정상 생성된 긴 문단은 textpos `0/45/90/135/180`, vpos `0/1688/3376/5064/6752`의
+5줄이며, `line_height=1000`, `text_height=1056`, `line_spacing=632`다.
+원본 합성의 단일 줄 재조판 계약은 기존 테스트에 계속 남아 있다.
+
+| 최종 HWP | SHA256 |
+| --- | --- |
+| `width-top.hwp` | `335e54e427a2aa5c8f8c4f5cbc32c37c591553aabd65ec1d984a1561e4317857` |
+| `width-center.hwp` | `b5c2bb3e6e9986fc18aa4f69309d59b7c46498f7220fbb251aa06efe1afb6009` |
+| `width-bottom.hwp` | `367d526c1ced41a32b8654cf79776d79b68b70af05a47bf699f912df16ef6e50` |
+
+## 독립 기준과 제한
+
+기준 PDF는 `pdf/pr7200/width-{top,center,bottom}-recomposed-2020.pdf`다.
+`tests/cases/stored_nested_content_flow.rs::hancom_recomposed_lines_and_nested_table_match_pdf_positions`
+검사는 PDF에서 추출한 5줄과 `End`의 96 DPI 위치, 별도 셀/본문 문단 테두리를 확인한다.
+1px 좌표 허용 범위는 PDF 글리프 상자와 renderer 줄 상자의 차이를 허용하며 80px 가로 이동이나
+줄마다 56HU가 누적되는 이전 오차를 숨기지 않는다. 픽셀 전체 일치를 뜻하지 않는다.
+
+최종 시각 판정과 남은 차이는 `mydocs/pr/archives/pr_7200_review.md`를 따른다.
+이 대조군의 통과를 기존 합성 HWP/PDF의 시각 일치로 보고하지 않는다.
+
+| 출력 | HWP 변환 job | PDF 변환 job |
+| --- | --- | --- |
+| Top | `23ad8834-17de-4200-a27e-49b4eac77752` | `304aefea-c842-4258-9572-9a24b606cb88` |
+| Center | `a989b91d-b907-498e-b10d-20a9c75d5406` | `1a81ff29-129f-450e-9854-af0f46dc55a4` |
+| Bottom | `9c01d2bb-9782-49dc-a3eb-5f352d0cfe06` | `d5a624d6-5e37-4bee-8c09-66580754ee33` |
+
+
+## 미해결 추가 테두리의 원인 분리
+
+`host-char-border-off.hwpx`는 위 재조판 직전 HWPX에서 바깥 표를 포함하는 run의 글자 테두리만
+없는 스타일로 바꾼 통제 입력이다. 텍스트와 표 크기·셀/문단 테두리는 그대로이며 표를 숨기거나 크기를
+줄이지 않았다. `pdf/pr7200/host-char-border-off-2020.pdf`에서는 바깥 표 아래의 추가 외곽선이
+사라진다. 따라서 이 선을 셀/문단 테두리의 중복으로 삭제할 수 없다. 원본의 글자 테두리는 아직
+renderer에 재현되지 않았으며 통제군 PDF를 원본의 정답 PDF로 대체하지 않는다.
+변환 job: `2d1152d4-867c-4b3f-b526-42a33618b53c`, engine 2020, terminal succeeded.
