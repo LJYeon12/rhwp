@@ -60,3 +60,8 @@ last_verified: 2026-09-16
   해당 회귀 해결 후 최종 head에서 실행해야 한다.
 - #7186: 일반/CI-unit tsc, npm unit 1740 pass/2 skipped, production build,
   command-palette E2E, 영어/한국어 Chrome 실제 실행 통과. 다른 PR의 Rust 검증 대체가 아니다.
+
+## 통합 PR CI 후속 기록
+
+[PR #7197](https://github.com/edwardkim/rhwp/pull/7197)의 `7665912859016c9d46a326e86f000c1a394e4862`에서 [CI Full](https://github.com/edwardkim/rhwp/actions/runs/35071582466) 및 CodeQL·Render Diff·Adapter·Proptest가 통과했다.
+코드 변경 없이 최종 검토·오늘할일을 trailing commit으로 보완한다. [개별 검토의 contributor comment 계획](pr_7181_review.md#merge-후-contributor-pr-comment-계획)에 따라 merge 후 확정값과 이슈 상태를 게시한다.
