@@ -6,4 +6,3 @@ test issue_7140_nested_row_unit_paint_height::hwpx_page_count_matches_the_oracle
 test issue_7140_nested_row_unit_paint_height::nested_row_units_reserve_painted_height ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 190 filtered out; finished in 0.32s
-

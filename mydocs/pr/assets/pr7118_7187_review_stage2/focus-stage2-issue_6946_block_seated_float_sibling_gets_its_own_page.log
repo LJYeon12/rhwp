@@ -12,4 +12,3 @@ test issue_6946_block_seated_float_sibling_gets_its_own_page::no_page_stacks_two
 test issue_6946_block_seated_float_sibling_gets_its_own_page::unrelated_lane_does_not_hide_a_block_siblings_occupancy ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 209 filtered out; finished in 0.04s
-

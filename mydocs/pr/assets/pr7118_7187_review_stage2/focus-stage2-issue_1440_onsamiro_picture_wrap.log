@@ -13,4 +13,3 @@ test issue_1440_onsamiro_picture_wrap::issue_1440_page6_box_border_connect_and_d
 test issue_1440_onsamiro_picture_wrap::issue_1440_page35_text_lines_do_not_cross_square_picture ... ok
 
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 189 filtered out; finished in 0.12s
-

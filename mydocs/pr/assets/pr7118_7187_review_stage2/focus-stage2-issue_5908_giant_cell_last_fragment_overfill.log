@@ -87,4 +87,3 @@ LAYOUT_OVERFLOW: page=43, sec=0, col=0, para=0, type=PartialTable, first=true, y
 test issue_5908_giant_cell_last_fragment_overfill::issue_5908_annex_two_moves_off_the_collapsed_page ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 195 filtered out; finished in 0.31s
-

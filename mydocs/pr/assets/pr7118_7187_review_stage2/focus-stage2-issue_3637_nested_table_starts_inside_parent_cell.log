@@ -8,4 +8,3 @@ LAYOUT_TABLE_OVERLAP: page=14, sec=0, para_a=111, para_b=118, a=75.6~1191.7, b=9
 test issue_3637_nested_table_starts_inside_parent_cell::nested_table_starts_inside_its_parent_cell ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 195 filtered out; finished in 0.21s
-

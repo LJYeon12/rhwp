@@ -6,4 +6,3 @@ test issue_6970_multicolumn_synth_ladder_fill::no_column_holds_more_than_it_can 
 test issue_6970_multicolumn_synth_ladder_fill::multicolumn_synth_ladder_column_counts_what_it_holds ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 193 filtered out; finished in 0.01s
-

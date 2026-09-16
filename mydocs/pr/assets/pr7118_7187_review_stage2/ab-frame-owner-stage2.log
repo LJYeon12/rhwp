@@ -11,4 +11,3 @@ test issue_7095_page_spanning_fragment_box::stored_midpage_cut_keeps_its_last_so
 test issue_7095_page_spanning_fragment_box::fragment_budget_preserves_units_with_visible_and_empty_hosts ... ok
 
 test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 192 filtered out; finished in 1.38s
-

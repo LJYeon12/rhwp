@@ -10,4 +10,3 @@ test issue_7174_hwp3_footnote_number_suffix::hwp3_note_body_keeps_a_different_le
 test issue_7174_hwp3_footnote_number_suffix::hwp3_footnote_shape_carries_the_document_number_suffix ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 187 filtered out; finished in 0.01s
-

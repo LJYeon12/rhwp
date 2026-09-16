@@ -7,4 +7,3 @@ test issue_6970_no_ls_cross_column_picture_flow::issue_6970_no_ls_text_avoids_pr
 test issue_6970_no_ls_cross_column_picture_flow::issue_6970_behind_text_pictures_do_not_reserve_a_side_lane ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 196 filtered out; finished in 0.01s
-

@@ -23,4 +23,3 @@ test issue_4771_derived_layout_state::every_hwp_lowering_api_preserves_the_live_
 test issue_4771_derived_layout_state::issue_2004_projection_preserves_each_picture_identity_and_final_bounds ... ok
 
 test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 193 filtered out; finished in 0.03s
-

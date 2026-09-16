@@ -7,4 +7,3 @@ LAYOUT_TABLE_OVERLAP: page=0, sec=0, para_a=2, para_b=3, a=151.3~190.9, b=188.0~
 test issue_3637_para_topbottom_vpos_base::no_glyph_is_drawn_outside_the_page ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 202 filtered out; finished in 0.02s
-

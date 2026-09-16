@@ -9,4 +9,3 @@ test issue_1892::issue_1892_hwp3_drawing_group_roundtrip_render_is_self_consiste
 test issue_1892::issue_1892_hwp3_tab_roundtrip_render_is_self_consistent ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 186 filtered out; finished in 0.01s
-
