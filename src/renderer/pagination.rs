@@ -505,9 +505,6 @@ pub struct ColumnContent {
     /// 넘긴 행을 앵커 쪽에서도 전부 그리면(bleed) 시각적으로는 클립돼 안 보이지만
     /// render tree 에 쪽 밖 줄이 남아 `overflow_cell_baseline` 래칫에 계상된다.
     pub overlay_cuts: Vec<(usize, usize, usize)>,
-    /// 쪽 머리 승격 쪽의 잔여 단이 배너 아래에서 시작하도록 하는 상단 예약(px).
-    /// typeset 의 fit 과 layout 의 실제 y 가 같은 값을 쓰도록 여기 실어 나른다.
-    pub banner_top_reserve: f64,
 }
 
 /// [#4568] 쪽을 넘긴 overlay 표의 잔여 행 조각.
@@ -993,7 +990,6 @@ impl PaginationResult {
                                 (((pi as i64 + offset as i64).max(0) as usize, ci), placement)
                             })
                             .collect(),
-                        banner_top_reserve: cc.banner_top_reserve,
                         zone_layout: cc.zone_layout.clone(),
                         zone_y_offset: cc.zone_y_offset,
                         wrap_around_paras: cc

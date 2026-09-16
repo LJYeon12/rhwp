@@ -16089,36 +16089,68 @@ impl LayoutEngine {
         max_padding
     }
 
-    /// [#7140] 비종결 컷에서 `row_cut_content_height` 가 유닛 합 위에 더하는 mixed nested
-    /// 첫 가시 유닛 예약(`mixed_nested_flow_extra_from_cut`)의 행 최댓값.
-    ///
-    /// 컷 예산이 이 몫을 빼지 않으면 조각의 물리 높이가 본문을 넘는다 — 예약은 컷 시점에
-    /// 이미 정해져 있으므로(시작 컷의 첫 가시 유닛) 예산과 소비가 같은 값을 쓸 수 있다.
-    pub(crate) fn row_cut_mixed_nested_reserve(
+    /// 실제 선택한 중첩 표 구간의 추가 점유 공간을 구한다. 종결 컷은 비종결 컷과
+    /// 다른 뷰포트 꼬리를 소유할 수 있으므로 끝 컷을 `units.len()-1`로 추정하지 않는다.
+    fn row_cut_mixed_nested_reserve(
         &self,
         table: &crate::model::table::Table,
         row: usize,
         start_cut: &[usize],
+        end_cut: &[usize],
         styles: &ResolvedStyleSet,
     ) -> f64 {
-        let mut row_cells: Vec<&crate::model::table::Cell> = table
+        let mut cells: Vec<_> = table
             .cells
             .iter()
-            .filter(|c| c.row as usize == row && c.row_span == 1)
+            .filter(|cell| cell.row as usize == row && cell.row_span == 1)
             .collect();
-        row_cells.sort_by_key(|c| c.col);
-        let mut reserve = 0.0f64;
-        for (i, cell) in row_cells.iter().enumerate() {
-            let units = self.cell_units(cell, table, styles);
-            let su = start_cut.get(i).copied().unwrap_or(0).min(units.len());
-            if su + 1 >= units.len() {
-                continue;
+        cells.sort_by_key(|cell| cell.col);
+        cells
+            .iter()
+            .enumerate()
+            .map(|(i, cell)| {
+                let units = self.cell_units(cell, table, styles);
+                let start = start_cut.get(i).copied().unwrap_or(0).min(units.len());
+                let end = end_cut
+                    .get(i)
+                    .copied()
+                    .unwrap_or(units.len())
+                    .clamp(start, units.len());
+                self.mixed_nested_flow_extra_from_cut(cell, table, styles, start, end)
+            })
+            .fold(0.0, f64::max)
+    }
+
+    /// 원본 내용의 컷을 선택한 뒤 해당 중첩 뷰포트의 물리 공간을 예약한다.
+    /// 재시도마다 내용 예산을 줄이고, 선택 컷이 더 이상 바뀌지 않으면 종료한다.
+    /// 분할할 수 없는 첫 유닛을 소비해 진행하는 기존 규칙은 유지하며, 호출자는
+    /// 이와 동일한 컷으로 실제 배치 높이를 측정한다.
+    pub(crate) fn advance_row_cut_with_mixed_nested_reserve(
+        &self,
+        table: &crate::model::table::Table,
+        row: usize,
+        start_cut: &[usize],
+        content_budget: f64,
+        styles: &ResolvedStyleSet,
+    ) -> (RowCutResult, f64) {
+        let mut budget = content_budget;
+        let mut cut = self.advance_row_cut(table, row, start_cut, budget, styles);
+        loop {
+            let reserve =
+                self.row_cut_mixed_nested_reserve(table, row, start_cut, &cut.end_cut, styles);
+            let available = (content_budget - reserve).max(0.0);
+            if cut.consumed_height <= available + ROW_CUT_CAPACITY_FP_EPSILON_PX
+                || available >= budget
+            {
+                return (cut, budget);
             }
-            let hi = units.len() - 1;
-            reserve =
-                reserve.max(self.mixed_nested_flow_extra_from_cut(cell, table, styles, su, hi));
+            budget = available;
+            let next = self.advance_row_cut(table, row, start_cut, budget, styles);
+            if next.end_cut == cut.end_cut {
+                return (next, budget);
+            }
+            cut = next;
         }
-        reserve
     }
 
     fn has_stored_square_picture_flow_in_row(
@@ -17582,6 +17614,103 @@ mod row_cut_tests {
         assert_eq!(r.end_cut, vec![3, 6]);
         assert!(r.fully_consumed);
         assert!((r.consumed_height - 96.0).abs() < 0.5);
+
+        // 중첩 표 혼합 구간·종결 컷·원본 유닛의 누락 및 중복 여부도 확인한다.
+        // 10px 유닛의 합성 계약이며, 기존 42065 17쪽 종결 뷰포트 규칙
+        // (첫 유닛 두 개 + 4px)를 예약 단계가 빠뜨리지 않는지 검사한다.
+        // 실제 한컴 출력과의 일치는 별도의 원본 문서 Visual Sweep으로 확인한다.
+
+        for (single_cell, native_recursive) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let eng = LayoutEngine::new(96.0);
+            eng.set_layout_profile(crate::model::provenance::LayoutCompatibilityProfile::new(
+                false,
+                false,
+                !native_recursive,
+                !native_recursive,
+                false,
+                native_recursive,
+            ));
+            let styles = ResolvedStyleSet::default();
+            let nested = rowbreak_table(vec![cell(0, 0, vec![visible_text_para(6, 0)])]);
+            let host = Paragraph {
+                controls: vec![Control::Table(Box::new(nested))],
+                ..Default::default()
+            };
+            let mut t = rowbreak_table(vec![cell(0, 0, vec![host])]);
+            if !single_cell {
+                t.col_count = 2;
+            }
+            let units: Vec<_> = (0..6)
+                .map(|i| {
+                    let mut u = recursive_block_unit(10.0, RecursiveBlockPreludeRole::None);
+                    u.mixed_nested_recursive = native_recursive;
+                    u.vis_start = i;
+                    u.vis_end = i + 1;
+                    u
+                })
+                .collect();
+            eng.cell_units_cache.borrow_mut().insert(
+                &t.cells[0] as *const Cell as usize,
+                std::sync::Arc::new(units),
+            );
+            let partial_extra = eng.row_cut_mixed_nested_reserve(&t, 0, &[2], &[4], &styles);
+            let terminal_extra = eng.row_cut_mixed_nested_reserve(&t, 0, &[5], &[6], &styles);
+            assert_eq!(
+                partial_extra,
+                if single_cell || native_recursive {
+                    0.0
+                } else {
+                    10.0
+                }
+            );
+            assert_eq!(
+                terminal_extra,
+                if native_recursive {
+                    0.0
+                } else if single_cell {
+                    24.0
+                } else {
+                    10.0
+                },
+                "last unit still owns a physical viewport"
+            );
+
+            let budget = if single_cell { 34.0 } else { 20.0 };
+            let mut start = vec![2];
+            let mut seen = Vec::new();
+            while start[0] < 6 {
+                let (cut, _) =
+                    eng.advance_row_cut_with_mixed_nested_reserve(&t, 0, &start, budget, &styles);
+                assert!(cut.end_cut[0] > start[0]);
+                let extra = eng.row_cut_mixed_nested_reserve(&t, 0, &start, &cut.end_cut, &styles);
+                assert!(
+                    cut.consumed_height + extra <= budget + 0.1,
+                    "reserve must fit before accepting the cut"
+                );
+                let painted = eng.row_cut_content_height(&t, 0, &start, &cut.end_cut, &styles);
+                assert!(
+                    painted <= budget + 0.1,
+                    "paint must fit the same selected interval: {painted}"
+                );
+                seen.extend(start[0]..cut.end_cut[0]);
+                assert_eq!(cut.fully_consumed, cut.end_cut[0] == 6);
+                start = cut.end_cut;
+            }
+            assert_eq!(seen, vec![2, 3, 4, 5], "no omitted or repeated source unit");
+            let (done, _) =
+                eng.advance_row_cut_with_mixed_nested_reserve(&t, 0, &start, budget, &styles);
+            assert!(done.fully_consumed);
+            assert_eq!(
+                done.consumed_height, 0.0,
+                "finished viewport cannot reserve a blank successor page"
+            );
+            assert_eq!(
+                eng.row_cut_mixed_nested_reserve(&t, 0, &start, &done.end_cut, &styles),
+                0.0
+            );
+        }
     }
 
     fn rscell(row: u16, col: u16, row_span: u16, paragraphs: Vec<Paragraph>) -> Cell {

@@ -2377,6 +2377,12 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band(
     // 소유권 계약은 종전대로 본문 게이트만 통과한다.
     let frame_admits_controls = line_breaking::supports_cached_body_frame_controls(para)
         || (crate::renderer::para_has_no_stored_line_segs(para)
+            && (known_square_band
+                || para.controls.iter().any(|control| {
+                    matches!(control, crate::model::control::Control::Picture(picture)
+                    if !picture.common.treat_as_char
+                    && picture.common.text_wrap == crate::model::shape::TextWrap::Square)
+                }))
             && line_breaking::supports_picture_band_frame_controls(para));
     if !paragraph_box.is_usable() || !frame_admits_controls {
         return None;

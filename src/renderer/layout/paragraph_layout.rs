@@ -3460,14 +3460,24 @@ impl LayoutEngine {
                 let para_style = styles.para_styles.get(comp.para_style_id as usize);
                 let margin_l = para_style.map(|s| s.margin_left).unwrap_or(0.0);
                 let margin_r = para_style.map(|s| s.margin_right).unwrap_or(0.0);
-                let column_inner_width = (col_area.width - margin_l - margin_r).max(0.0);
+                let frame_width = if crate::renderer::para_has_no_stored_line_segs(para) {
+                    crate::renderer::synthetic_wrap_column_width(
+                        col_area.width,
+                        margin_l,
+                        wrap_anchor,
+                        self.dpi,
+                    )
+                } else {
+                    col_area.width
+                };
+                let column_inner_width = (frame_width - margin_l - margin_r).max(0.0);
                 // 문단 상자는 편집 경로(`DocumentCore::reflow_paragraph`)의 가용 폭과
                 // 같아야 한다 — 한 문단이 어느 경로로 왔는지에 따라 다른 폭을 갖지
                 // 않게 한다(typeset 의 동일 산출과 맞춘다). 들여쓰기/내어쓰기는 이
                 // 상자 **안에서** `layout_paragraph_in_frame` 의 indent_px 가 적용한다.
                 // `body_for_style`, not `body` — see the note in `typeset.rs`.
                 let paragraph_box = crate::renderer::composer::ParagraphBox::body_for_style(
-                    col_area.width,
+                    frame_width,
                     para_style,
                     self.dpi,
                 );

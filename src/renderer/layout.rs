@@ -6113,7 +6113,7 @@ impl LayoutEngine {
                 }
             }
 
-            let mut col_area = if current_zone_start_y > col_area_base.y {
+            let col_area = if current_zone_start_y > col_area_base.y {
                 LayoutRect {
                     x: col_area_base.x,
                     y: current_zone_start_y,
@@ -6124,12 +6124,6 @@ impl LayoutEngine {
             } else {
                 *col_area_base
             };
-            // 쪽 머리 승격 쪽의 잔여 단은 배너 아래에서 시작한다 — typeset 의
-            // fit 이 선점한 상단 예약을 실제 y 에도 동일하게 반영한다.
-            if col_content.banner_top_reserve > 0.0 {
-                col_area.y += col_content.banner_top_reserve;
-                col_area.height = (col_area.height - col_content.banner_top_reserve).max(0.0);
-            }
 
             let (col_node, y_offset) = self.build_single_column(
                 tree,
@@ -6320,6 +6314,11 @@ impl LayoutEngine {
         for i in 0..zone_layout.column_areas.len() - 1 {
             let left = &zone_layout.column_areas[i];
             let right = &zone_layout.column_areas[i + 1];
+            let (left, right) = if left.x <= right.x {
+                (left, right)
+            } else {
+                (right, left)
+            };
             let sep_x = (left.x + left.width + right.x) / 2.0;
             let sep_id = tree.next_id();
             let sep_line = LineNode::new(
@@ -6374,6 +6373,7 @@ impl LayoutEngine {
             header_area: *col_area,
             body_area: *col_area,
             column_areas: vec![*col_area],
+            column_direction: crate::model::page::ColumnDirection::LeftToRight,
             footnote_area: *col_area,
             footer_area: *col_area,
             dpi: self.dpi,
@@ -6397,7 +6397,6 @@ impl LayoutEngine {
             inline_placements: Default::default(),
             inline_flow_plans: Default::default(),
             paragraph_float_placements: Default::default(),
-            banner_top_reserve: 0.0,
         };
         let page_content = PageContent {
             page_index: 0,

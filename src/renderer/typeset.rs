@@ -1220,23 +1220,6 @@ struct TypesetState {
     /// [Task #1753] 지연 이월되는 visible-host 자리차지 표 직전에 현재 쪽 잔여 공간으로
     /// 선행 배치(prefill)된 후속 문단들 — 메인 루프에서 스킵.
     prefilled_paras: std::collections::HashSet<usize>,
-    /// 현재 쪽에서 쪽 머리 승격(배너 문단의 쪽 되감기)이 이미 일어났는가 —
-    /// 쪽당 1회(같은 쪽의 두 번째 배너 문단은 흐름에 자연 배치되어 배너가
-    /// 같은 자리에 겹쳐 그려진다).
-    page_banner_header_promoted: bool,
-    /// 쪽 머리 승격으로 뒤 순서로 밀린 잔여의 첫 문단 — 이 문단은 앞 단
-    /// 자투리에 흡수되지 않고 항상 새 단에서 시작한다.
-    banner_remainder_column_break: Option<usize>,
-    /// 잔여 단의 시작 높이 예약 — 배너가 본문 상단을 침범한 깊이(px). 잔여
-    /// 단 콘텐츠는 배너 아래에서 시작한다.
-    banner_remainder_top_reserve: f64,
-    /// 승격이 일어난 쪽의 잔여 뒤에 이어지는 다음 배너 문단 — 시각적으로
-    /// 보이지 않는 문단이므로(배너는 승격 배너와 같은 자리에 겹치고 타이틀은
-    /// 배너용 흰 글씨), 미세한 바닥 초과 시 다음 쪽으로 밀지 않고 이 쪽 끝에
-    /// 흡수한다.
-    banner_tail_absorb_para: Option<usize>,
-    /// 현재 진행 중인 단의 배너 상단 예약(px) — flush 시 ColumnContent 로 전달.
-    current_banner_top_reserve: f64,
     /// [Task #1755] 이월 전 쪽에 host 텍스트 줄을 PartialParagraph 로 pre-emit 한 문단 —
     /// layout 의 마지막 fragment 뒤 host 렌더 억제 신호(PaginationResult 로 전달).
     pre_emitted_host_paras: std::collections::HashSet<usize>,
@@ -1821,28 +1804,6 @@ fn para_is_columndef_only_separator(para: &Paragraph) -> bool {
             .controls
             .iter()
             .all(|c| matches!(c, Control::ColumnDef(_)))
-}
-
-/// 쪽 상단 전폭 배너(BehindText·Paper 앵커·본문 시작 위 y·용지폭 85% 이상 그림)를
-/// 가진 "쪽 머리" 문단. 한글은 이 문단을 쪽 첫 단 상단에 앉히고, 같은 쪽으로
-/// 이월된 앞선 잔여 콘텐츠를 마지막 단으로 돌린다.
-fn para_is_page_banner_header(para: &Paragraph, page_def: &PageDef) -> bool {
-    para_has_visible_text(para)
-        && para.controls.iter().any(|ctrl| {
-            matches!(ctrl, Control::Picture(pic)
-                if !pic.common.treat_as_char
-                    && matches!(
-                        pic.common.text_wrap,
-                        crate::model::shape::TextWrap::BehindText
-                    )
-                    && matches!(
-                        pic.common.vert_rel_to,
-                        crate::model::shape::VertRelTo::Paper
-                    )
-                    && signed_hwpunit(pic.common.vertical_offset)
-                        < page_def.margin_top.saturating_add(page_def.margin_header) as i32
-                    && (pic.common.width as u64) * 100 >= (page_def.width as u64) * 85)
-        })
 }
 
 fn para_is_paper_page_square_empty_table_anchor(para: &Paragraph) -> bool {
@@ -4947,11 +4908,6 @@ impl TypesetState {
             fragment_queued_table_footnotes: std::collections::HashSet::new(),
             reset_vpos_after_queued_table_footnote_page: false,
             prefilled_paras: std::collections::HashSet::new(),
-            page_banner_header_promoted: false,
-            banner_remainder_column_break: None,
-            banner_remainder_top_reserve: 0.0,
-            banner_tail_absorb_para: None,
-            current_banner_top_reserve: 0.0,
             pre_emitted_host_paras: std::collections::HashSet::new(),
             pre_emitted_host_heights: std::collections::HashMap::new(),
             skip_safety_margin_once: false,
@@ -5438,121 +5394,6 @@ impl TypesetState {
     }
 
     /// 현재 항목을 ColumnContent로 만들어 마지막 페이지에 push
-    /// 쪽 머리 승격: 현재 쪽에 배치된 항목 전부를 걷어내고 그 문단 인덱스들을
-    /// 오름차순으로 돌려준다(재순회용). 앞 쪽에서 걸쳐 들어온 분할 조각이 있거나
-    /// 각주/미주 항목이 섞여 있으면 되감지 않고 None 을 돌려준다.
-    fn rewind_page_for_banner_header(&mut self, banner_para_idx: usize) -> Option<Vec<usize>> {
-        let diag = std::env::var("RHWP_DIAG_PGHDR").is_ok();
-        // 되감기 범위: 현재 쪽에 flush 된 단들 + 진행 중 단의 항목 전부.
-        let mut all_items: Vec<&PageItem> = Vec::new();
-        if let Some(page) = self.pages.last() {
-            for cc in &page.column_contents {
-                all_items.extend(cc.items.iter());
-            }
-        }
-        all_items.extend(self.current_items.iter());
-        let mut indices = std::collections::BTreeSet::new();
-        for item in &all_items {
-            let ok = match item {
-                PageItem::FullParagraph { para_index }
-                | PageItem::Shape { para_index, .. }
-                | PageItem::Table { para_index, .. } => {
-                    indices.insert(*para_index);
-                    true
-                }
-                PageItem::PartialParagraph {
-                    para_index,
-                    start_line,
-                    ..
-                } => {
-                    // 걸친 조각은 첫 조각(start_line==0)이 이 범위 안에 있을 때만
-                    // 통째 재배치가 가능하다 — 아니면 앞 쪽에 걸친 것.
-                    let whole_in_scope = *start_line == 0
-                        || all_items.iter().any(|it| {
-                            matches!(it, PageItem::PartialParagraph {
-                                para_index: p,
-                                start_line: 0,
-                                ..
-                            } if p == para_index)
-                        });
-                    indices.insert(*para_index);
-                    whole_in_scope
-                }
-                PageItem::PartialTable {
-                    para_index,
-                    control_index,
-                    is_continuation,
-                    ..
-                } => {
-                    let whole_in_scope = !*is_continuation
-                        || all_items.iter().any(|it| {
-                            matches!(it, PageItem::Table {
-                                para_index: p,
-                                control_index: c,
-                            } if p == para_index && c == control_index)
-                                || matches!(it, PageItem::PartialTable {
-                                    para_index: p,
-                                    control_index: c,
-                                    is_continuation: false,
-                                    ..
-                                } if p == para_index && c == control_index)
-                        });
-                    indices.insert(*para_index);
-                    whole_in_scope
-                }
-                _ => false, // 각주/미주 등 — 보수적으로 포기
-            };
-            if !ok {
-                if diag {
-                    eprintln!("DIAG_PGHDR rewind-abort item={:?}", item);
-                }
-                return None;
-            }
-        }
-        // 이월 대기 표(host 가 배너 문단보다 앞)도 회수해 재순회에 포함한다.
-        let deferred = std::mem::take(&mut self.deferred_table_controls);
-        for d in deferred {
-            if d.para_index < banner_para_idx {
-                indices.insert(d.para_index);
-            } else {
-                self.deferred_table_controls.push(d);
-            }
-        }
-        if indices.is_empty() {
-            if diag {
-                eprintln!("DIAG_PGHDR rewind-abort empty");
-            }
-            return None;
-        }
-        // 미래 문단(prefill 등)이 섞여 있으면 이중 배치 위험 — 포기.
-        if indices.iter().any(|&idx| idx >= banner_para_idx)
-            || indices.iter().any(|idx| self.prefilled_paras.contains(idx))
-        {
-            if diag {
-                eprintln!("DIAG_PGHDR rewind-abort future/prefilled {:?}", indices);
-            }
-            return None;
-        }
-        // 되감기: 이 쪽에 flush 된 단과 진행 중 단 상태를 전부 비운다.
-        if let Some(page) = self.pages.last_mut() {
-            page.column_contents.clear();
-        }
-        self.current_items.clear();
-        self.current_column_wrap_around_paras.clear();
-        self.current_column_wrap_anchors.clear();
-        self.visible_float_exclusions.clear();
-        self.wrap_synth_rects.clear();
-        self.prev_body_bottom_vpos = None;
-        self.flow_underrun = 0.0;
-        self.current_column = 0;
-        self.current_height = self.pending_body_wide_top_reserve;
-        self.current_start_height = self.current_height;
-        self.current_endnote_flow = false;
-        self.reset_vpos_cursor();
-        self.page_banner_header_promoted = true;
-        Some(indices.into_iter().collect())
-    }
-
     fn flush_column(&mut self) {
         // [#4090] 쪽이 끝나면 어울림 밴드도 끝난다 — 개체 높이를 used 에 반영한다.
         self.close_square_band();
@@ -5578,7 +5419,6 @@ impl TypesetState {
             inline_placements: std::mem::take(&mut self.inline_placements),
             inline_flow_plans: std::mem::take(&mut self.inline_flow_plans),
             paragraph_float_placements: std::mem::take(&mut self.paragraph_float_placements),
-            banner_top_reserve: std::mem::take(&mut self.current_banner_top_reserve),
         };
         if let Some(page) = self.pages.last_mut() {
             page.column_contents.push(col_content);
@@ -5666,7 +5506,6 @@ impl TypesetState {
             inline_placements: std::mem::take(&mut self.inline_placements),
             inline_flow_plans: std::mem::take(&mut self.inline_flow_plans),
             paragraph_float_placements: std::mem::take(&mut self.paragraph_float_placements),
-            banner_top_reserve: std::mem::take(&mut self.current_banner_top_reserve),
         };
         if let Some(page) = self.pages.last_mut() {
             page.column_contents.push(col_content);
@@ -5777,8 +5616,8 @@ impl TypesetState {
 
     /// 새 페이지 push + 상태 리셋
     fn push_new_page(&mut self) {
-        // 쪽 머리 승격은 쪽당 1회 — 새 쪽에서 리셋.
-        self.page_banner_header_promoted = false;
+        self.layout
+            .apply_column_page_number(self.pages.len() as u32 + 1);
         self.pages.push(self.new_page_content(Vec::new()));
         // 합성 어울림 배제 사각형은 쪽 단위 — 새 쪽에서 비운다.
         self.wrap_synth_rects.clear();
@@ -7940,14 +7779,7 @@ impl TypesetEngine {
         }
         let issue2424_loop_started = issue2424_ts_enabled.then(std::time::Instant::now);
 
-        // 쪽 머리 승격(아래)이 잔여 문단을 뒤 순서로 미룰 수 있도록, 문단 순회를
-        // 재배열 가능한 인덱스 목록으로 돈다. 승격이 없으면 문서 순서와 동일하다.
-        let mut traversal: Vec<usize> = (0..paragraphs.len()).collect();
-        let mut traversal_cursor: usize = 0;
-        while traversal_cursor < traversal.len() {
-            let para_idx = traversal[traversal_cursor];
-            traversal_cursor += 1;
-            let para = &paragraphs[para_idx];
+        for (para_idx, para) in paragraphs.iter().enumerate() {
             // [Task #1753] 지연 이월 표 직전에 선행 채움(prefill)으로 이미 배치된 문단 스킵.
             if st.prefilled_paras.contains(&para_idx) {
                 continue;
@@ -8031,105 +7863,6 @@ impl TypesetEngine {
                             );
                         }
                         st.advance_column_or_new_page();
-                    }
-                }
-            }
-            // 쪽 머리 승격(쪽 되감기): 쪽 상단 전폭 배너 문단은 한글에서 항상 쪽의
-            // 첫 단 상단에 놓인다. 이 문단이 쪽 중간(이월 잔여가 이미 이 쪽에 깔린
-            // 위치)에 오면, 이 쪽을 되감아 배너 문단부터 다시 채우고 잔여 문단들은
-            // 다음 배너 문단 직전 순서로 미룬다 — 잔여가 쪽의 마지막 단에 놓이는
-            // 한글 실측 계약(재현 문서 E 2쪽)의 순차 모델 등가. 저장
-            // lineseg 없는 다단 문서 한정 — 저장 조판 문서는 정답지가 우선한다.
-            if std::env::var("RHWP_DIAG_PGHDR").is_ok()
-                && para_is_page_banner_header(para, page_def)
-            {
-                eprintln!(
-                    "DIAG_PGHDR gate pi={} cols={} stored_ls={} promoted={} cur_items={} page_cols={:?} fnh={:.1} ovl={} cuts={} sqp={}",
-                    para_idx,
-                    st.col_count,
-                    st.has_stored_line_segs,
-                    st.page_banner_header_promoted,
-                    st.current_items.len(),
-                    st.pages.last().map(|p| p.column_contents.len()),
-                    st.current_footnote_height,
-                    st.current_column_overlay_continuations.len(),
-                    st.current_column_overlay_cuts.len(),
-                    st.page_start_square_pictures.len()
-                );
-            }
-            if st.col_count >= 2
-                && !st.has_stored_line_segs
-                && !st.page_banner_header_promoted
-                && (!st.current_items.is_empty()
-                    || st
-                        .pages
-                        .last()
-                        .is_some_and(|page| !page.column_contents.is_empty()))
-                && st.current_footnote_height == 0.0
-                && st.current_column_overlay_continuations.is_empty()
-                && st.current_column_overlay_cuts.is_empty()
-                && st.page_start_square_pictures.is_empty()
-                && para_is_page_banner_header(para, page_def)
-            {
-                if let Some(remainder) = st.rewind_page_for_banner_header(para_idx) {
-                    // 잔여 선두의 연속 빈 문단은 쪽 경계에서 소진된 것 — 재삽입하면
-                    // 마지막 단 상단을 밀어내므로 드랍한다(한글: 잔여 단은 첫 실내용
-                    // 문단부터 시작).
-                    let first_kept = remainder
-                        .iter()
-                        .position(|&idx| {
-                            let p = &paragraphs[idx];
-                            !(p.text.is_empty() && p.controls.is_empty())
-                        })
-                        .unwrap_or(remainder.len());
-                    let remainder = &remainder[first_kept..];
-                    st.banner_remainder_column_break = remainder.first().copied();
-                    // 배너가 본문 상단을 침범한 깊이 — 잔여 단은 배너 아래에서 시작.
-                    let banner_bottom_hu = para
-                        .controls
-                        .iter()
-                        .filter_map(|ctrl| match ctrl {
-                            Control::Picture(pic)
-                                if !pic.common.treat_as_char
-                                    && matches!(
-                                        pic.common.vert_rel_to,
-                                        crate::model::shape::VertRelTo::Paper
-                                    ) =>
-                            {
-                                Some(
-                                    signed_hwpunit(pic.common.vertical_offset)
-                                        .saturating_add(pic.common.height as i32),
-                                )
-                            }
-                            _ => None,
-                        })
-                        .max()
-                        .unwrap_or(0);
-                    let body_top_hu =
-                        page_def.margin_top.saturating_add(page_def.margin_header) as i32;
-                    st.banner_remainder_top_reserve = hwpunit_to_px(
-                        banner_bottom_hu.saturating_sub(body_top_hu).max(0),
-                        self.dpi,
-                    );
-                    let insert_at = traversal[traversal_cursor..]
-                        .iter()
-                        .position(|&idx| para_is_page_banner_header(&paragraphs[idx], page_def))
-                        .map(|off| traversal_cursor + off)
-                        .unwrap_or(traversal.len());
-                    traversal.splice(insert_at..insert_at, remainder.iter().copied());
-                    // 잔여 직후의 다음 배너 문단은 이 쪽 끝에서 미세 초과 흡수 대상.
-                    st.banner_tail_absorb_para = traversal
-                        .get(insert_at + remainder.len())
-                        .copied()
-                        .filter(|&idx| para_is_page_banner_header(&paragraphs[idx], page_def));
-                    if std::env::var("RHWP_DIAG_PGHDR").is_ok() {
-                        eprintln!(
-                            "DIAG_PGHDR rewind pi={} remainder={:?} insert_at={} page={}",
-                            para_idx,
-                            remainder,
-                            insert_at,
-                            st.pages.len()
-                        );
                     }
                 }
             }
@@ -8266,21 +7999,6 @@ impl TypesetEngine {
                         && empty_table_carrier_column_break_before_page_table(
                             para_idx, para, paragraphs,
                         )));
-            // 쪽 머리 승격 잔여의 첫 문단은 앞 단 자투리에 흡수되지 않고 항상
-            // 새 단(마지막 단)에서 시작한다.
-            if st.banner_remainder_column_break == Some(para_idx) {
-                st.banner_remainder_column_break = None;
-                if !st.current_items.is_empty() {
-                    st.advance_column_or_new_page();
-                }
-                if st.current_height < st.banner_remainder_top_reserve {
-                    st.current_height = st.banner_remainder_top_reserve;
-                    st.current_start_height = st.current_height;
-                    st.current_banner_top_reserve = st.banner_remainder_top_reserve;
-                    st.reset_vpos_cursor();
-                }
-                st.banner_remainder_top_reserve = 0.0;
-            }
             if para.column_type == ColumnBreakType::Column && !suppress_floating_anchor_column_break
             {
                 if has_diff_col_def {
@@ -9271,13 +8989,16 @@ impl TypesetEngine {
                                         band_y_range: None,
                                     },
                                 );
-                                // 합성 감폭 상자는 비례 초과를 허용한다 — 계상 글자
-                                // 폭(전각 em 휴리스틱)이 한글 실측 advance 보다 넓어,
-                                // 한글이 넣은 마지막 어절이 밀려 줄 수가 정답과
-                                // 갈라진다(재현: 강제 개행 줄의 마지막 어절이 다음
-                                // 줄로 넘어가 아래 구획과 겹침).
-                                let fit_slack = crate::renderer::synth_wrap_fit_slack_px(sw_px);
-                                col_w = col_w.min(sw_px + fit_slack);
+                                let margin_left = styles
+                                    .para_styles
+                                    .get(para.para_shape_id as usize)
+                                    .map_or(0.0, |style| style.margin_left);
+                                col_w = crate::renderer::synthetic_wrap_column_width(
+                                    col_w,
+                                    margin_left,
+                                    st.current_column_wrap_anchors.get(&para_idx),
+                                    self.dpi,
+                                );
                             }
                         }
                     }
@@ -9289,7 +9010,8 @@ impl TypesetEngine {
                     composed.get(para_idx),
                     styles,
                     Some(col_w),
-                    st.wrap_around_derived_band,
+                    st.wrap_around_derived_band
+                        || st.current_column_wrap_anchors.contains_key(&para_idx),
                 );
                 // 줄 단위 어울림 배제: 문단 시작은 개체 위이지만 뒷줄이 개체 사각형과
                 // 교차하는 형상(출석부) — 문단 전체 감폭 대신 교차 y 밴드를 anchor 에
@@ -18496,25 +18218,6 @@ impl TypesetEngine {
             }
         }
 
-        // 쪽 머리 승격 쪽 끝의 두 번째 배너 문단 흡수: 이 문단은 시각적으로
-        // 보이지 않으므로(배너는 상단 승격 배너와 같은 자리에 겹치고, 타이틀은
-        // 배너용 흰 글씨), 미세한 바닥 초과로 다음 쪽에 배너를 새로 여는 대신
-        // 이 쪽 끝에 흡수한다 — 한글 실측(사용안내 3쪽 배너 없음) 정합.
-        if st.banner_tail_absorb_para == Some(para_idx) {
-            st.banner_tail_absorb_para = None;
-            if st.page_banner_header_promoted
-                && !st.current_items.is_empty()
-                && st.current_height + fmt.height_for_fit > available
-                && st.current_height <= available + 0.5
-            {
-                st.current_items.push(PageItem::FullParagraph {
-                    para_index: para_idx,
-                });
-                st.current_height = available;
-                return;
-            }
-        }
-
         // [Task #676] trailing empty paragraph 가드 (단단 전용):
         // 섹션 마지막 빈 paragraph 가 현재 safety 영역 내 미세 overflow 로 fit 실패 시
         // height=0 흡수 — 단독 빈 페이지 차단. 한컴2022 정합 시멘틱.
@@ -23962,15 +23665,7 @@ impl TypesetEngine {
             } else {
                 mt.max_padding_for_row(r)
             };
-            // [#7140] 조각이 쪽에서 차지하는 높이(`row_cut_content_height`)는 유닛 합 위에
-            // mixed nested 첫 가시 유닛을 한 번 더 예약한다. 예산이 그 몫을 빼지 않으면 컷이
-            // 예산 안이어도 조각은 본문을 넘고, 이어받는 행(`r == cursor_row`)은 아래 재시도
-            // 진입 조건 셋이 모두 거짓이라 그 넘침이 그대로 수용된다(issue3637 26·29쪽).
-            // 측정과 배치가 같은 값을 쓰도록 예산에서도 같은 예약을 뺀다.
-            let mixed_nested_reserve =
-                layout_engine.row_cut_mixed_nested_reserve(table, r, row_start_cut, styles);
-            let mut budget =
-                (avail_for_rows - consumed - cs_before - padding - mixed_nested_reserve).max(0.0);
+            let content_budget = (avail_for_rows - consumed - cs_before - padding).max(0.0);
             let native_hwp5_internal_reset_row_tail = st.profile.hwp5_stored_pagination_layout()
                 && !table.common.treat_as_char
                 && mt.allows_row_break_split()
@@ -23986,7 +23681,13 @@ impl TypesetEngine {
             // Stored vpos-frame resets are source-owned physical fragment boundaries.
             // First take the ordinary budget cut, then extend only to the end of
             // the recorded source frame when that exact CellUnit boundary is known.
-            let mut res = layout_engine.advance_row_cut(table, r, row_start_cut, budget, styles);
+            let (mut res, mut budget) = layout_engine.advance_row_cut_with_mixed_nested_reserve(
+                table,
+                r,
+                row_start_cut,
+                content_budget,
+                styles,
+            );
             // A terminal paragraph tail must not cross the exact plain-text
             // reset where the ordinary capacity cut already stopped.  A row
             // may contain other `vpos=0` transitions for control-only
@@ -24567,13 +24268,14 @@ impl TypesetEngine {
                     } else {
                         (budget - over - 0.5).max(0.0)
                     };
-                    let res2 = layout_engine.advance_row_cut(
-                        table,
-                        r,
-                        row_start_cut,
-                        retry_budget,
-                        styles,
-                    );
+                    let (res2, retry_budget) = layout_engine
+                        .advance_row_cut_with_mixed_nested_reserve(
+                            table,
+                            r,
+                            row_start_cut,
+                            retry_budget,
+                            styles,
+                        );
                     let mut retried = false;
                     if !res2.fully_consumed {
                         let split_total2 = layout_engine.row_cut_content_height(
@@ -30684,7 +30386,6 @@ mod tests {
                 inline_placements: Default::default(),
                 inline_flow_plans: Default::default(),
                 paragraph_float_placements: Default::default(),
-                banner_top_reserve: 0.0,
             }],
             active_header: None,
             active_footer: None,
