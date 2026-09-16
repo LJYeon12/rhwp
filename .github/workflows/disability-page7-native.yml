@@ -1,0 +1,113 @@
+name: Disability page 7 full native library verification
+on:
+  push:
+    branches: [feat/disability-page7-native-check]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  native-skia-tests:
+    name: Native Skia tests
+    runs-on: ubuntu-latest
+    # [#3284] 러너 hang 을 실패로 드러내는 상한 (성능 목표 아님) — 실험 종료 후에도 유지
+    timeout-minutes: 30
+    # [#5164 Stage 3] Native Skia는 독립 runner에서 실행되므로 lint·frontend를 기다리지 않는다.
+    # 각 lane의 성공·skip 계약은 최종 Build & Test 집계 job이 함께 검증한다.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 2543382e757967183be1938893ac2c5be2c0c16e
+
+      # archive builder와 같은 30GB 임계치만 적용한다. 일반 ubuntu-latest의 충분한 여유에서는
+      # Android/dotnet 삭제가 약 1분을 쓰므로 건너뛴다.
+      - name: Free disk space (remove unused pre-installed toolchains)
+        run: |
+          set -euo pipefail
+          echo 'Disk space before cleanup:'
+          df -h /
+          df -B1 --output=source,size,used,avail,pcent,target /
+          available_gb=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
+          if (( available_gb < 30 )); then
+            echo "Low disk space: ${available_gb}GB available; inspecting and removing unused toolchains."
+            for path in /usr/local/lib/android /usr/share/dotnet; do
+              if [[ -e "${path}" ]]; then
+                sudo du -sh "${path}"
+              else
+                echo "${path}: absent"
+              fi
+            done
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          else
+            echo "Skip cleanup: ${available_gb}GB available"
+          fi
+
+          echo 'Disk space after cleanup:'
+          df -h /
+          df -B1 --output=source,size,used,avail,pcent,target /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable 브랜치 (2026-08-01 시점)
+        with:
+          toolchain: 1.93.1
+
+      # [#2431 C] 기본 test job 의 rust-cache 이행 후 writer가 사라진
+      # Linux-cargo-* namespace 대신 Native Skia 전용 shared key를 사용한다.
+      # PR은 restore-only, devel/main push만 save하는 신뢰 경계를 유지한다.
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2.9.1
+        with:
+          shared-key: native-skia
+          save-if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/devel' || github.ref == 'refs/heads/main') }}
+
+      - name: Install native Skia runtime packages
+        id: native-skia-runtime
+        run: |
+          # hosted runner의 APT mirror 지연·dpkg lock이 Native Skia lane 전체를
+          # 장시간 pending으로 남기지 않게 한다. 재시도 후에도 회복하지 못하면
+          # 3분 안에 APT 단계 실패로 원인을 드러낸다.
+          apt_options=(
+            -o Acquire::Retries=3
+            -o Acquire::http::Timeout=30
+            -o Acquire::https::Timeout=30
+            -o DPkg::Lock::Timeout=60
+          )
+          install_apt() {
+            set +e
+            sudo env DEBIAN_FRONTEND=noninteractive \
+              timeout 180 apt-get "${apt_options[@]}" "$@"
+            local status=$?
+            set -e
+
+            if [[ "${status}" -eq 124 ]]; then
+              echo "::warning::Native Skia tests skipped: APT command exceeded 180 seconds."
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            return "${status}"
+          }
+
+          install_apt update
+          install_apt install -y --no-install-recommends \
+            fonts-dejavu-core \
+            libfontconfig1-dev \
+            libfreetype6-dev
+          echo "available=true" >> "$GITHUB_OUTPUT"
+
+      # Native Skia starts from a clean checkout but compiles generated
+      # integration-test targets through Cargo, so prepare them locally first.
+      - name: Prepare derived Rust test suites
+        if: steps.native-skia-runtime.outputs.available != 'false'
+        run: node scripts/rust-test-suite-manifest.mjs --prepare
+
+      - name: Full native-feature library tests
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "2543382e757967183be1938893ac2c5be2c0c16e"
+          test "${{ steps.native-skia-runtime.outputs.available }}" = "true"
+          cargo test --locked --profile release-test --features native-skia --lib
+          node scripts/rust-test-suite-manifest.mjs --check
