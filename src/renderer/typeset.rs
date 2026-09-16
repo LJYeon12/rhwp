@@ -21198,34 +21198,51 @@ impl TypesetEngine {
         // (1341000-201100013 31쪽: 548.0 × 401.9px — 아래 표 341.9px 가 안 보인다).
         // 조각이 소비한 흐름 바닥을 raw top 으로 삼으면 lane 이 available 을 넘어
         // 아래 block 경로로 되돌아가고, 한/글처럼 표가 제 쪽을 받는다(45쪽 중 28쪽).
+        //
+        // [#6946] 앞 형제가 **쪼개지지 않고 통째로** block 경로에 앉은 경우도 같다. 그
+        // 표는 lane 예약(`reserved_height`)이 available 을 넘어 여기서 거절됐고
+        // `typeset_block_table` 이 저장 사다리 fit 으로 받았으므로 `PageItem::Table` 로
+        // 나가지만 lane 에는 없다. 뒤 형제는 빈 lane 을 믿고 문단 앵커(0)에 앉아 두 표가
+        // 한 쪽에 겹친다(44529 7쪽: 903.3px + 894.5px 인데 used=924.2, 한/글은 7·8쪽).
+        // lane 예약의 control 소유로 배치 경로를 구별한다. 가로 교차만 확인하면 앞의
+        // 작은 표 A가 남긴 lane을 block 표 B의 예약으로 오인해 뒤 표 C가 B와 겹친다.
+        // 실제 lane 형제는 pushed_top이 밀어 주고, block 형제는 흐름 바닥을 소비한다.
         let raw_top = {
-            let blocked_by_fragment = st.current_items.iter().any(|item| match item {
-                PageItem::PartialTable {
-                    para_index,
-                    control_index,
-                    ..
-                } if *para_index == para_idx => match para.controls.get(*control_index) {
-                    Some(Control::Table(previous)) => {
-                        let previous_width =
-                            hwpunit_to_px(signed_hwpunit(previous.common.width), self.dpi);
-                        let (previous_start, previous_end) = horizontal_range(
-                            &previous.common,
-                            previous_width,
-                            placement_ctx,
-                            self.dpi,
-                        );
-                        crate::renderer::float_placement::ranges_overlap(
-                            x_start,
-                            x_end,
-                            previous_start,
-                            previous_end,
-                        )
+            let blocked_by_sibling = st.current_items.iter().any(|item| {
+                let (previous_ctrl, whole) = match item {
+                    PageItem::PartialTable {
+                        para_index,
+                        control_index,
+                        ..
+                    } if *para_index == para_idx => (*control_index, false),
+                    PageItem::Table {
+                        para_index,
+                        control_index,
+                    } if *para_index == para_idx && *control_index != ctrl_idx => {
+                        (*control_index, true)
                     }
-                    _ => false,
-                },
-                _ => false,
+                    _ => return false,
+                };
+                let Some(Control::Table(previous)) = para.controls.get(previous_ctrl) else {
+                    return false;
+                };
+                let previous_width = hwpunit_to_px(signed_hwpunit(previous.common.width), self.dpi);
+                let (previous_start, previous_end) =
+                    horizontal_range(&previous.common, previous_width, placement_ctx, self.dpi);
+                let overlaps = crate::renderer::float_placement::ranges_overlap(
+                    x_start,
+                    x_end,
+                    previous_start,
+                    previous_end,
+                );
+                let lane_registered = whole
+                    && lanes
+                        .lanes()
+                        .iter()
+                        .any(|lane| lane.control_index == Some(previous_ctrl));
+                overlaps && !lane_registered
             });
-            if blocked_by_fragment {
+            if blocked_by_sibling {
                 raw_top.max(st.current_height)
             } else {
                 raw_top
@@ -21250,7 +21267,7 @@ impl TypesetEngine {
             para_index: para_idx,
             control_index: ctrl_idx,
         });
-        lanes.place(x_start, x_end, raw_top, reserved_height);
+        lanes.place(Some(ctrl_idx), x_start, x_end, raw_top, reserved_height);
         st.current_height = st.current_height.max(lanes.max_bottom());
         true
     }
@@ -27015,7 +27032,39 @@ impl TypesetEngine {
             // typeset 의 page_avail = (table_available - cur_h) 은 두 overhead 를
             // 포함하지 않아 split 결정 시 actual 가용보다 과대 평가됨 → partial 오버플로우.
             // aift.hwp p44 pi=584: 41.6 px split_end → 실제 가용 36 px → overflow 37.6 px.
+            // [#7095] 본문을 통째로 담은 1×1 RowBreak 쪽 조각은 쪽마다 바깥 여백(위·아래)을
+            // 다시 열고, 비끝 조각 상자는 본문 아래 − 바깥 아래 여백 − 100HU 에서 끝난다
+            // (한/글 2020 정본, PDF 쪽 척도 제거 후 두 문서 101~104HU · 돌연변이 7종에서 상수).
+            // 렌더러(`table_partial.rs`)가 같은 술어로 상자를 고정하므로 예산도 같이 뺀다.
+            //
+            // 쪽 **상단**에서 시작하는 조각에만 쓴다. 쪽 중간에서 시작하는 첫 조각에 여백과
+            // 100HU 를 빼면 컷이 한 유닛 일러져 한/글보다 쪽이 는다(80168 29쪽 pi226 · 157→158,
+            // rowbreak-problem-pages 14쪽 pi16 · 18→19). 렌더러의 상자 고정 조건과 같은 축이다.
+            let single_cell_page_fragment =
+                crate::renderer::float_placement::native_single_cell_rowbreak_page_fragment(
+                    self.profile.get().hwp5_stored_pagination_layout(),
+                    table,
+                ) && (is_continuation || st.current_height < 0.5);
             let (host_before_overhead, fragment_outer_bottom_overhead) =
+                partial_rowbreak_fragment_spacing_px(
+                    table,
+                    host_spacing_before,
+                    is_continuation,
+                    strict_following_plain_text_fit || single_cell_page_fragment,
+                    crate::renderer::float_placement::native_empty_host_cellbreak_fragment_repeats_outer_margin(
+                        self.profile.get().hwp5_stored_pagination_layout(),
+                        para,
+                        table,
+                    ),
+                    self.dpi,
+                );
+            // 끝 조각의 흐름 전진에는 이 형상이 새로 연 아래 여백과 100HU 를 넣지 않는다.
+            // 둘 다 비끝 조각 상자의 계약이고, 끝 조각은 내용에 맞춰 끝나 렌더러도 그 뒤에
+            // 여백을 두지 않는다. 넣어 두면 쓰지 않는 자리를 예산에서 먹어 다음 내용이 밀린다.
+            // - rowbreak-problem-pages 14쪽: pi13 끝 조각 뒤 pi16 이 0.2px 차로 안 들어가 18→19쪽
+            // - hwpctl_API_v2.4 73쪽: pi1750 끝 조각 뒤 pi1760 13행이 74쪽으로 밀려 본문 넘침
+            //   (정본은 13행을 73쪽 992.7 에 두고, 조각 아래 괘선 393.11 뒤에 여백을 두지 않는다)
+            let terminal_outer_bottom_overhead = if single_cell_page_fragment {
                 partial_rowbreak_fragment_spacing_px(
                     table,
                     host_spacing_before,
@@ -27027,7 +27076,21 @@ impl TypesetEngine {
                         table,
                     ),
                     self.dpi,
-                );
+                )
+                .1
+            } else {
+                fragment_outer_bottom_overhead
+            };
+            let single_cell_page_fragment_inset_px = if single_cell_page_fragment {
+                hwpunit_to_px(
+                    crate::renderer::float_placement::SINGLE_CELL_PAGE_FRAGMENT_BOTTOM_INSET_HU,
+                    self.dpi,
+                )
+            } else {
+                0.0
+            };
+            let fragment_outer_bottom_overhead =
+                fragment_outer_bottom_overhead + single_cell_page_fragment_inset_px;
             // [#6143] 오프셋이 쪽 경계에서 이미 소진된 첫 조각은 예산에서도 빼지
             // 않는다. 앵커 문단이 이 쪽에 아무것도 내지 않았고(항목 0 · host 선방출 0)
             // 표가 쪽 최상단에서 시작하면 오프셋의 기준점(문단 자리)이 이 쪽에 없다 —
@@ -27205,6 +27268,21 @@ impl TypesetEngine {
                     }
                 }
             });
+            // A resolved host origin is shared with paint. Single-cell fragments
+            // open their top margin here once, so the replacement budget cannot
+            // silently lose the margin that table_partial would add afterwards.
+            let single_cell_fragment_shape =
+                crate::renderer::float_placement::native_single_cell_rowbreak_page_fragment(
+                    self.profile.get().hwp5_stored_pagination_layout(), table,
+                ) && std::ptr::eq(row_geometry_table, table);
+            let fragment_placement = fragment_placement.map(|mut p| {
+                if single_cell_fragment_shape && !is_continuation
+                    && prepared.host_frame == (st.pages.len(), st.current_column, st.current_zone_y_offset.to_bits())
+                {
+                    p.table_top += hwpunit_to_px(table.outer_margin_top as i32, self.dpi);
+                }
+                p
+            });
             let page_avail = fragment_placement.map_or(page_avail, |p| {
                 let boundary = if is_continuation || prepared.host_frame !=
                     (st.pages.len(), st.current_column, st.current_zone_y_offset.to_bits()) {
@@ -27218,6 +27296,19 @@ impl TypesetEngine {
                         first_fragment_painted_row_footer_guard
                     } else { 0.0 }).max(0.0)
             });
+
+            // A resolved visible-host origin replaces the default budget above;
+            // retain the physical bottom inset in that replacement as well.
+            // Empty-host stored cuts keep their existing advance-height budget:
+            // its final line spacing is not painted content. Subtracting the box
+            // inset from that mid-page advance rejects valid source units
+            // (80168 157->158 pages, rowbreak-problem-pages 18->19).
+            let page_avail = if let Some(p) = fragment_placement.filter(|_| single_cell_fragment_shape) {
+                let box_bottom = crate::renderer::float_placement::single_cell_page_fragment_bottom(
+                    table, st.available_height(), self.dpi,
+                );
+                page_avail.min((box_bottom - p.table_top - caption_extra).max(0.0))
+            } else { page_avail };
 
             // RowBreak 표의 common.height가 전체 표가 아니라 첫 physical fragment를
             // 저장할 수 있다. 저장 anchor가 현재 flow와 같고 declared bottom이 이
@@ -27740,7 +27831,7 @@ impl TypesetEngine {
                         + vert_offset_overhead
                         + partial_height
                         + bottom_caption_extra
-                        + fragment_outer_bottom_overhead
+                        + terminal_outer_bottom_overhead
                         + host_spacing_after_only
                         + terminal_nested_child_host_line_spacing;
                 }
