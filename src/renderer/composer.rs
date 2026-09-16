@@ -911,6 +911,12 @@ fn inject_footnote_markers(lines: &mut [ComposedLine], positions: &[(usize, u16)
     }
 }
 
+// 저장 줄의 실제 점유 높이. 줄 구성과 저장 줄 소속 재사용 판정이 같은
+// 메트릭을 비교해야 글자 테두리로 높아진 정상 줄을 재조판 줄로 오인하지 않는다.
+fn stored_line_box_height(seg: &LineSeg) -> i32 {
+    seg.line_height.max(seg.text_height)
+}
+
 /// 문단의 텍스트를 줄별로 분할하고, 각 줄 내에서 CharShapeRef 경계에 따라 분할한다.
 fn compose_lines(para: &Paragraph) -> Vec<ComposedLine> {
     if para.line_segs.is_empty() {
@@ -1150,7 +1156,7 @@ fn compose_lines(para: &Paragraph) -> Vec<ComposedLine> {
                 // 글자 테두리 등으로 텍스트 점유 높이가 명목 줄 높이를 넘을 수
                 // 있다. 한컴 저장 줄(1000/1056/632)은 1688HU씩 전진한다.
                 // 공통 구성 결과에 점유 높이를 싣고 측정과 paint가 함께 소비한다.
-                line_seg.line_height.max(line_seg.text_height)
+                stored_line_box_height(line_seg)
             };
 
             let mut push_segment = |segment_start: usize, segment_end: usize, has_break: bool| {
@@ -1566,7 +1572,7 @@ pub(crate) fn stored_tac_line_assignment(
             .enumerate()
             .any(|(i, (line, seg))| {
                 seg.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0
-                    || line.line_height != seg.line_height
+                    || line.line_height != stored_line_box_height(seg)
                     || line.segment_width != seg.segment_width
                     || line.char_start
                         != para

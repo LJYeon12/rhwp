@@ -127,6 +127,14 @@ fn nested_alignment_uses_rewrapped_text_and_actual_float_flow() {
         let extension = if kind == "width" { "hwp" } else { "hwpx" };
         let top = nodes(&format!("{kind}-top.{extension}"));
         let outer = table(&top, 320.0);
+        if kind == "overlay" {
+            let behind = table(&top, 160.0);
+            let following = table(&top, 10000.0 / 75.0);
+            // 한컴 PDF: 객체 높이 대신 빈 호스트 줄(1000+200HU)만 전진한다.
+            assert!((following.y - behind.y - 16.0).abs() < 0.6);
+            assert!((following.x - behind.x - behind.width).abs() < 0.6);
+            assert!(following.x + following.width <= outer.x + outer.width + 0.6);
+        }
         let nested_bottom = top
             .iter()
             .filter(|node| {
@@ -226,4 +234,55 @@ fn hancom_recomposed_lines_and_nested_table_match_pdf_positions() {
             "{align}: TAC 표 호스트의 본문 문단 테두리 누락"
         );
     }
+}
+
+#[test]
+fn standalone_table_character_border_preserves_pdf_decoration_margins() {
+    let root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pr7200_hancom_recomposed");
+    // Hancom PDF: character-border bottom minus physical table bottom, at 96 DPI.
+    // Includes both sides of the 2.5 mm minimum and margins above that minimum.
+    for (name, expected_tail) in [
+        ("width-top.hwp", 18.699),
+        ("margin-min-700.hwp", 18.716),
+        ("margin-min-800.hwp", 19.996),
+        ("margin-both-1000.hwp", 13.597),
+        ("margin-both-2000.hwp", 26.875),
+    ] {
+        let page = nodes_from_file(&root.join(name));
+        let outer = page
+            .iter()
+            .find(|n| {
+                matches!(n.node_type, RenderNodeType::Table(_))
+                    && (n.bbox.width - 320.0).abs() < 0.5
+            })
+            .expect("outer table");
+        let bottom = outer.bbox.y + outer.bbox.height;
+        assert!(
+            outer
+                .children
+                .iter()
+                .any(|n| matches!(n.node_type, RenderNodeType::Line(_))
+                    && (n.bbox.width - 320.0).abs() < 0.5
+                    && matches!(&n.node_type, RenderNodeType::Line(line) if (line.y2-line.y1).abs() < 0.01)
+                    && (n.bbox.y - bottom - expected_tail).abs() < 0.6),
+            "{name}: missing/incorrect object character border tail {expected_tail}, table={:?}, lines={:?}", outer.bbox, outer.children.iter().filter(|n| matches!(n.node_type, RenderNodeType::Line(_))).map(|n| n.bbox).collect::<Vec<_>>()
+        );
+    }
+    let page = nodes_from_file(&root.join("host-char-border-off.hwpx"));
+    let outer = page
+        .iter()
+        .find(|n| {
+            matches!(n.node_type, RenderNodeType::Table(_)) && (n.bbox.width - 320.0).abs() < 0.5
+        })
+        .expect("outer table");
+    assert!(
+        !outer
+            .children
+            .iter()
+            .any(|n| matches!(n.node_type, RenderNodeType::Line(_))
+                && (n.bbox.width - 320.0).abs() < 0.5
+                && n.bbox.y > outer.bbox.y + outer.bbox.height + 1.0),
+        "turning off character border must retain table/paragraph borders only"
+    );
 }

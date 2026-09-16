@@ -2424,6 +2424,7 @@ impl LayoutEngine {
                         false,
                         false,
                         None,
+                        Self::standalone_table_char_border_fill(Some(para), table, styles),
                     );
                 }
             }
@@ -3267,6 +3268,7 @@ impl LayoutEngine {
                     false,
                     false,
                     None,
+                    Self::standalone_table_char_border_fill(Some(para), tbl, styles),
                 );
                 if table_bottom > max_table_bottom {
                     max_table_bottom = table_bottom;
@@ -3324,6 +3326,7 @@ impl LayoutEngine {
                 false,
                 false,
                 None,
+                Self::standalone_table_char_border_fill(Some(para), tbl, styles),
             );
             if table_bottom > max_table_bottom {
                 max_table_bottom = table_bottom;
@@ -7998,6 +8001,7 @@ impl LayoutEngine {
                                     false,
                                     false,
                                     None,
+                                    Self::standalone_table_char_border_fill(Some(p), t, styles),
                                 );
                                 // 스킵 마커 등록 (별도 Table PageItem에서 중복 렌더 방지)
                                 tree.set_inline_shape_position(
@@ -9070,6 +9074,7 @@ impl LayoutEngine {
                                         false,
                                         false,
                                         None,
+                                        Self::standalone_table_char_border_fill(Some(p), t, styles),
                                     );
                                 }
                                 tree.set_inline_shape_position(

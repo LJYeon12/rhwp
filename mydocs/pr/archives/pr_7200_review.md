@@ -2,28 +2,31 @@
 kind: snapshot
 status: active
 canonical: mydocs/pr/archives/pr_7200_review.md
-last_verified: 2026-09-16
+last_verified: 2026-09-17
 ---
 
 # PR #7200 검토
 
 ## 최종 판정
 
-**머지 보류 — 메인터너 보정 진행 중, PDF 시각 일치 미충족.**
-빈 선행 문단의 측정/배치 불일치에 더해, 사용자가 overlay의 표 위치·누락된 테두리 차이도
-해결하도록 요청했다. 작은 정렬 불변식의 통과만으로 보류를 해제하지 않는다.
-전체 nextest는 사용자 요청으로 중단했다(exit 143). 완료된 전체 검증으로 세지 않는다.
-현재 작업 트리 보정으로 focused 9개와 Native/fresh WASM 13쪽 캡처를 완료했다.
-전체 회귀·Clippy·Native Skia 검증은 재개하지 않았으며 최종 push 준비 완료가 아니다.
-원격 push·GitHub comment·merge는 수행하지 않았다. 아래 원 PR 검토 결과는 수정 전 증거로 보존한다.
+**머지 보류 — 메인터너 보정의 로컬 필수 검증 완료, 원본 합성 PDF의 시각 일치 주장은 미충족.**
+빈 선행 줄·가로 앵커·문단 테두리에 이어, 단독 TAC 표의 글자 테두리도 복원했다.
+정상 한컴 저장본의 Top/Center/Bottom에서 5줄·뒤 문단·표 외곽을 직접 대조했으며,
+추가 여백 경계 4개를 포함한 Native/fresh WASM 23쪽은 서로 동일하다.
+원본 합성 HWP의 무효 저장 줄에서 발생하는 한컴 PDF의 글자 겹침은 별도 실패 증거로 유지한다.
+정상 대조군 통과를 그 원본의 시각 일치로 바꾸어 보고하지 않는다.
+원격 push·GitHub comment·merge는 수행하지 않았다.
 
-진행 기록: [메인터너 보정 1회차](../../working/task_m100_7200_stage1.md).
+진행 기록: [1회차](../../working/task_m100_7200_stage1.md),
+[2회차](../../working/task_m100_7200_stage2.md).
+PDF 버전 제한 제거는 `fbc14758f`에 별도 커밋했다. PDF 1.4 및 `Hwp 2020 0.0.0.0`은
+보류 사유가 아니다. 실제 입력 대응·출력 결함을 생성 메타데이터와 구분한다.
 
 사용자가 비공개 실제 7쪽 양식 대신 **함께 커밋된 HWP 파일로 대체**하도록 지정했다.
 이에 `width-top.hwp`, `width-center.hwp`, `width-bottom.hwp`를 한컴 PDF로 변환해 전후 비교했다.
 비공개 원본 부재 자체를 이번 보류 사유로 삼지 않는다. 그 원본 7쪽 개선은 reviewer 미검증이다.
 
-## 검토 대상과 계보
+## 원 PR 검토 대상과 계보 (보정 전)
 
 | 항목 | 확인값 |
 | --- | --- |
@@ -33,7 +36,7 @@ last_verified: 2026-09-16
 | 원 head | `2543382e757967183be1938893ac2c5be2c0c16e` |
 | 검토 base | `222c8c4819de414898bf5b15608b0d0d394a3748` |
 | 로컬 branch | `codex/pr7200-review-20260916` |
-| 통합 code head | `25e0d8c747ff6f38117c5ef1899b4caad50f3a52` |
+| 체리픽 직후 code head | `25e0d8c747ff6f38117c5ef1899b4caad50f3a52` |
 | 체리픽 | `a2c1f814e` → `4e8c087a0`, `2543382e7` → `25e0d8c74`, 모두 `-x`, 충돌 없음 |
 | 범위 | 엔진 4파일, focused 1파일/3함수, 합성 입력 28개와 README; baseline 변경 없음 |
 | 원격 재확인 | 원 head 불변, OPEN/non-draft, CLEAN; maintainer_can_modify=true |
@@ -41,7 +44,7 @@ last_verified: 2026-09-16
 route: collaborator_external_pr + intake_and_review + local_validation + visual_fixture_evidence.
 fork 직접 push 가능 여부는 이번 검토에서 dry-run하지 않았다. maintainer 수정 허용과 실제 push 성공은 구분한다.
 
-## P2 — 실제 배치가 사용하지 않는 빈 문단 높이를 정렬 측정에 더함
+## 원 PR 검토 당시 P2 — 실제 배치가 사용하지 않는 빈 문단 높이를 정렬 측정에 더함
 
 변경 위치: `src/renderer/layout/table_layout.rs:8408–8419`.
 새 `calc_nested_controls_bottom_height`는 저장 vpos 사다리가 무너진 셀에서 일반 문단 높이를
@@ -68,7 +71,7 @@ Top의 실제 중첩 표 하단이 179.3px, 부모 셀 하단이 286.0px이므�
 수정 전 FAIL / 보정 후 PASS 및 기존 원 PR 경계의 보존을 확인해야 한다.
 `has_preceding_text` 제한을 새 측정 휴리스틱으로 단순 복제하는 것으로 공통 결과를 대체하지 않는다.
 
-## 검증 실행
+## 원 PR 검토 당시 검증 실행
 
 | 항목 | 결과 |
 | --- | --- |
@@ -130,7 +133,7 @@ base 비교 CLI는 앞선 작업에서 보존한 `/private/tmp/rhwp-6611-2026091
 합성 HWP의 비정상 저장 줄을 한컴의 정상 문서 조판 기준으로 일반화할 수 없다.
 이 자료의 한계는 앞서 실행으로 확인한 새 빈 문단 정렬 회귀와 분리한다.
 
-## 조판 원칙 및 범위 심사
+## 원 PR 검토 당시 조판 원칙 및 범위 심사
 
 | 주장 / 소비 경로 | 판정과 근거 |
 | --- | --- |
@@ -167,13 +170,14 @@ Native 비교는 `--wasm-pkg`를 생략하고 base는 위 base CLI를 지정했�
 이하 메인터너 보정 결과를 추가했다. 최종 head CI·원격 조치·병합은 수행하지 않았다.
 
 
-## 메인터너 보정 — 시각 차이 직접 확인 후 부분 수정
+## 메인터너 보정 — 위치·문단 테두리·객체 글자 테두리
 
 사용자 요청으로 실행 중이던 전체 nextest와 소유 하위 프로세스를 중단했다(exit **143**).
 정렬 불변식만 통과한 상태에서 큰 PDF 차이를 남기고 전체 테스트를 진행한 것은 잘못된 순서였다.
-이후 영향 페이지의 직접 비교를 우선했고 전체 회귀를 재실행하지 않았다.
+1회차에서는 이후 영향 페이지의 직접 비교를 우선했고 전체 회귀를 재실행하지 않았다.
+2회차에서는 시각 보정 뒤 전체 검증을 완료했으며, 아래 최종 검증 기록을 따른다.
 
-### 수정한 원인과 현재 결과
+### 1회차의 위치·문단 테두리 보정
 
 - 빈 줄의 점유 공간과 가시 텍스트 유무가 다르다. 측정/배치가 `SequentialNestedCellLayout`의
   원점·하단을 함께 소비하게 하여 빈 선행 줄 16px를 실제 중첩 표 배치에도 보존했다.
@@ -213,63 +217,139 @@ Native 비교는 `--wasm-pkg`를 생략하고 base는 위 base CLI를 지정했�
 [Center](../assets/pr7200_review/before_valid_center_review_001.png),
 [Bottom](../assets/pr7200_review/before_valid_bottom_review_001.png)과 아래 최종 증적을 직접 대조했다.
 
-### 최신 Native/fresh WASM 증적
+### 2회차: 단독 TAC 객체 글자 테두리
 
-96 DPI의 동일 입력·PDF·페이지로 compare/standalone overlay/review를 다시 생성해 9쪽 모두 직접 판독했다.
-Native와 fresh WASM의 페이지 PNG는 **9/9 바이트 동일**하다. 동일 PNG를 두 벌 보관하지 않고
-fresh WASM 증적을 대표로 보존한다. 자동 점수는 참고값이며 낮은 점수를 시각 통과로 표현하지 않는다.
+별도 PageItem인 표는 텍스트 run의 글자 테두리 paint를 거치지 않아 추가 외곽선이 누락됐다.
+표 호스트 control의 char shape를 찾아 물리적인 표 상자에 글자 테두리를 그린다. 배치·행 높이·
+다음 문단 전진에는 이 장식 상자의 높이를 더하지 않는다. 투명 1×1 wrapper도 자기 테두리가
+있으면 물리 상자를 보존한다. 텍스트/객체가 섞인 run 및 쪽 분할 조각은 이 신규 paint 범위가 아니다.
 
-| 입력 | pixel / ink match (%) | 보정 후 증적 |
+독립 한컴 PDF의 한쪽 700/800HU, 양쪽 1000/2000HU 여백에서 각각 최소 2.5mm(708HU)의
+장식 여백을 확인했다. 고정 14pt 하단 덧셈이 아니라 실제 여백과 최소값을 적용한다.
+[입력·PDF·생성 내역](../../../tests/fixtures/pr7200_hancom_recomposed/README.md)에 통제 방법과
+job을 기록했다. 새 정식 테두리 검사는 1회차 코드에서 FAIL(기존 5개 PASS), 보정 후 6개 모두 PASS다.
+글자 테두리만 끈 대조군에서는 추가 외곽선을 그리지 않는 것도 확인했다.
+
+### 전체 회귀와 추가 PDF에서 확인한 보정
+
+1차 전체 nextest는 9,945개 중 **9,941 PASS / 4 FAIL / 51 skipped**로 종료됐다.
+이 결과를 성공으로 세지 않았으며 아래 원인을 수정했다.
+
+- 줄 높이의 `max(line_height, text_height)` 보정 뒤 저장 TAC 줄 소속 검사는 옛 원값과 비교하여
+  정상 한컴 저장 정보를 거부했다. `stored_line_box_height`를 구성·수용 판정이 공유하게 했다.
+  기존 숫자 표의 같은 줄, 명시적 개행, 너비에 따른 줄바꿈, 뒤 텍스트 검사가 다시 통과한다.
+- 원 PR overlay 합성 입력의 두 표는 모두 LEFT/offset=0이었다. 올바른 가로 앵커에서 `End`와
+  `Second`가 겹쳤으므로 두 번째 표의 가로 위치를 첫 표 너비 12000HU만큼 명시했다.
+  이 속성 하나 외에 XML과 다른 ZIP entry는 동일하다. 글자 겹침은 세 정렬 각각 1→0이다.
+  baseline·허용치는 변경하지 않았다.
+- 이 입력의 새 한컴 PDF는 두 표가 같은 y라는 이전 합성 가정도 반박했다. `Second`는 `End`보다
+  **15.9968px** 아래다. 배경 객체는 전진하지 않지만 빈 호스트 줄은 1000+200HU = **16px**를
+  점유한다. sequential 계획에서 배경 표의 호스트 줄을 보존하고, 동일 결과를 정렬 측정과 실제
+  원점 배치가 소비한다. 새 16px assertion은 수정 전 FAIL, 수정 후 기존 5개와 함께 6 PASS다.
+
+최종 집중 검사: `stored_nested_content_flow` 6개와 `stored_inline_table_suffix` 2개, **8/8 PASS**.
+실제 저장 숫자 표의 PDF 3개와 변경한 overlay 입력/PDF 3개를 추가로 직접 비교했다.
+기존 HWP/PDF는 원래 경로를 재사용했고 overlay HWPX는 새 사본 없이 기존 입력 자체를 수정했다.
+
+### 2회차 Native/fresh WASM 직접 판독
+
+96 DPI, threshold 32를 유지했다. 19개 단쪽 경계와 실문서 4쪽의 Native/WASM은 **23/23
+바이트 동일**하다. 정상 저장본 7쪽에서 큰 위치·줄바꿈·외곽선 누락이 해소됐으며, 글꼴/가는 선의
+래스터 차이는 남는다. 자동 ink 지표를 시각 통과율로 사용하지 않는다. 원본 width 3쪽은 여전히
+한컴의 겹친 글자와 다르고, empty 3쪽은 합성 저장 메트릭과 한컴 재계산의 약 1.4px 글자/약 6px
+후행 테두리 차이가 남는다. 작은 불변식이나 전체 회귀 통과로 이 차이까지 해소됐다고 보고하지 않는다.
+
+| 입력 1쪽 | pixel / ink match (%) | 증적 |
 | --- | --- | --- |
-| valid-top 1쪽 | 97.90395 / 9.94019 | [compare](../assets/pr7200_review/maintainer_valid_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_valid_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_valid_top_review_001.png) |
-| valid-center 1쪽 | 97.91787 / 12.05253 | [compare](../assets/pr7200_review/maintainer_valid_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_valid_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_valid_center_review_001.png) |
-| valid-bottom 1쪽 | 97.85378 / 10.88324 | [compare](../assets/pr7200_review/maintainer_valid_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_valid_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_valid_bottom_review_001.png) |
-| empty-top 1쪽 | 97.10339 / 3.81356 | [compare](../assets/pr7200_review/maintainer_empty_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_top_review_001.png) |
-| empty-center 1쪽 | 97.19062 / 3.97009 | [compare](../assets/pr7200_review/maintainer_empty_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_center_review_001.png) |
-| empty-bottom 1쪽 | 97.25625 / 4.02623 | [compare](../assets/pr7200_review/maintainer_empty_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_bottom_review_001.png) |
-| width-top 1쪽 | 94.42812 / 4.57586 | [compare](../assets/pr7200_review/maintainer_width_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_top_review_001.png) |
-| width-center 1쪽 | 94.24401 / 4.20820 | [compare](../assets/pr7200_review/maintainer_width_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_center_review_001.png) |
-| width-bottom 1쪽 | 94.15964 / 3.68478 | [compare](../assets/pr7200_review/maintainer_width_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_bottom_review_001.png) |
+| empty-bottom | 97.16953 / 6.54342 | [compare](../assets/pr7200_review/maintainer_empty_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_bottom_review_001.png) |
+| empty-center | 97.10391 / 6.43614 | [compare](../assets/pr7200_review/maintainer_empty_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_center_review_001.png) |
+| empty-top | 97.01667 / 6.22135 | [compare](../assets/pr7200_review/maintainer_empty_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_top_review_001.png) |
+| valid-bottom | 97.78025 / 9.25153 | [compare](../assets/pr7200_review/maintainer_valid_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_valid_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_valid_bottom_review_001.png) |
+| valid-center | 97.84435 / 10.37476 | [compare](../assets/pr7200_review/maintainer_valid_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_valid_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_valid_center_review_001.png) |
+| valid-top | 97.83054 / 8.27243 | [compare](../assets/pr7200_review/maintainer_valid_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_valid_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_valid_top_review_001.png) |
+| width-bottom | 94.07292 / 4.91707 | [compare](../assets/pr7200_review/maintainer_width_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_bottom_review_001.png) |
+| width-center | 94.15729 / 5.43707 | [compare](../assets/pr7200_review/maintainer_width_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_center_review_001.png) |
+| width-top | 94.34141 / 5.82907 | [compare](../assets/pr7200_review/maintainer_width_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_top_review_001.png) |
+| margin-both-1000 | 94.99896 / 12.27445 | [compare](../assets/pr7200_review/maintainer_margin_both_1000_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_margin_both_1000_overlay_001.png) · [review](../assets/pr7200_review/maintainer_margin_both_1000_review_001.png) |
+| margin-both-2000 | 94.60625 / 7.83197 | [compare](../assets/pr7200_review/maintainer_margin_both_2000_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_margin_both_2000_overlay_001.png) · [review](../assets/pr7200_review/maintainer_margin_both_2000_review_001.png) |
+| margin-min-700 | 95.00703 / 9.90555 | [compare](../assets/pr7200_review/maintainer_margin_min_700_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_margin_min_700_overlay_001.png) · [review](../assets/pr7200_review/maintainer_margin_min_700_review_001.png) |
+| margin-min-800 | 95.10469 / 10.08323 | [compare](../assets/pr7200_review/maintainer_margin_min_800_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_margin_min_800_overlay_001.png) · [review](../assets/pr7200_review/maintainer_margin_min_800_review_001.png) |
+| digits-break | 96.58507 / 0.83186 | [compare](../assets/pr7200_review/maintainer_digits_break_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_digits_break_overlay_001.png) · [review](../assets/pr7200_review/maintainer_digits_break_review_001.png) |
+| digits-table-wrap | 97.39019 / 1.06943 | [compare](../assets/pr7200_review/maintainer_digits_table_wrap_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_digits_table_wrap_overlay_001.png) · [review](../assets/pr7200_review/maintainer_digits_table_wrap_review_001.png) |
+| digits-wrap | 97.32899 / 2.36395 | [compare](../assets/pr7200_review/maintainer_digits_wrap_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_digits_wrap_overlay_001.png) · [review](../assets/pr7200_review/maintainer_digits_wrap_review_001.png) |
+| overlay-bottom | 96.77422 / 6.63300 | [compare](../assets/pr7200_review/maintainer_overlay_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_overlay_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_overlay_bottom_review_001.png) |
+| overlay-center | 96.78906 / 6.49882 | [compare](../assets/pr7200_review/maintainer_overlay_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_overlay_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_overlay_center_review_001.png) |
+| overlay-top | 96.72448 / 6.26723 | [compare](../assets/pr7200_review/maintainer_overlay_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_overlay_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_overlay_top_review_001.png) |
 
-추가 실문서 대조는 #2470(1·2쪽)와 #6787(1·2쪽)이다. 보정 Native/fresh WASM의 4쪽은 base와
-각각 바이트 동일하다. #2470 2쪽의 기존 사진/행 높이 차이나 #6787의 기존 글꼴 차이를 이번 수정으로
-해결했다고 표현하지 않는다.
+실문서 #2470 1·2쪽과 #6787 1·2쪽도 재캡처·직접 판독했다. 1회차/base와 각 페이지가
+바이트 동일하다. #2470 2쪽 사진/행 높이 차이와 #6787 기존 글꼴·자간 차이를 해결한 것은 아니다.
 
 - #2470: [1쪽 overlay](../assets/pr7200_review/maintainer_issue2470_overlay_001.png), [2쪽 overlay](../assets/pr7200_review/maintainer_issue2470_overlay_002.png)
 - #6787: [1쪽 overlay](../assets/pr7200_review/maintainer_issue6787_overlay_001.png), [2쪽 overlay](../assets/pr7200_review/maintainer_issue6787_overlay_002.png)
 
-보정 산출물은 review commit `281795d20` 위 작업 트리의 아래 5개 production 파일 수정으로 빌드했다.
-원 PR source `2543382e7`의 빌드라고 표현하지 않는다. 보정 전 WASM은 앞서 보존한 `25e0d8c74`
-기반 package다. manifest의 현재 작업공간 HEAD를 이전 package의 source로 혼동하지 않는다.
+1회차 전체 결과와 이전 지표는 commit `4ce8d253cc0ea1fa7429957ce31184ee3d8e9bc0`의 이 문서에
+보존했다. 현재 `maintainer_*` 경계 PNG는 2회차 출력이며, 원 PR/base/보정 전 PNG는 유지했다.
 
-| 보정 산출물 | SHA256 |
+### 최종 검증 기록
+
+모든 아래 검사는 위 최종 production source와 최종 입력에서 성공했다. 과거 사용자 중단
+nextest(exit 143)와 1차 전체의 4 FAIL은 이 결과에 합산하지 않는다.
+
+| 검사 | 명령 / 범위 | 결과 |
+| --- | --- | --- |
+| 집중 회귀 | case wrapper `stored_nested_content_flow`, `stored_inline_table_suffix` | 6 + 2 PASS |
+| 전체 회귀 | `cargo nextest run --locked --cargo-profile release-test --tests --test-threads 8 --no-fail-fast` | **9945 PASS, 0 FAIL, 51 skipped**, exit 0; 실행 317.275초 |
+| 포맷 | `cargo fmt --all -- --check` | PASS |
+| Native Clippy | `cargo clippy --locked -- -D warnings` | PASS |
+| WASM Clippy | `cargo clippy --locked -p rhwp --lib --target wasm32-unknown-unknown -- -D warnings` | PASS |
+| workspace | `cargo build --locked --workspace` | PASS |
+| 전체 target Clippy | `cargo clippy --locked --workspace --all-targets -- -D warnings` | PASS |
+| suite 정책 | `rust-test-suite-manifest.mjs --check --base-ref 222c8c4819de414898bf5b15608b0d0d394a3748` | PASS, 48/48 integration targets |
+| Native Skia lib | `cargo test --locked --profile release-test --features native-skia --lib` | rhwp 3930 + 공용 crate 182 PASS, 13 ignored |
+| Native Skia 그림 | case wrapper `issue_2225_missing_picture_placeholder`, release-test/native-skia | 2 PASS |
+| Native Skia PDF | case wrapper `render_p37_direct_pdf_export`, release-test/native-skia | 4 PASS |
+| 새 문서 보안 | 전체 회귀에는 sample 28개를 환경변수로 전달. 추가로 최종 CLI의 `inspect hidden-text`, `inspect injection --include-fields`, `inspect unicode`를 sample 28 + fixture 11개에서 실행 | **39 × 3 = 117 clean**, 읽기/파싱 실패 0 |
+| 시각 검증 | 같은 입력·PDF의 Native/fresh WASM compare·standalone overlay·review | 23쪽 직접 판독, backend PNG **23/23 동일** |
+| 문서 | 변경 guide 메타데이터, 상대 링크, `git diff --check` | PASS |
+
+Rust/Cargo 작업은 전용 target에서 순차 실행했다. baseline·golden·래칫 허용치와 원본 width
+입력/PDF는 변경하지 않았다. 원격 head CI는 보정 내용을 아직 검사한 것이 아니며 push·merge는 미수행이다.
+
+### 해결 범위와 남은 시각 판정
+
+- 빈 선행 줄의 측정/배치 불일치, 80px 가로 앵커 이동, 누락 문단·객체 글자 테두리, 정상 저장 줄의
+  높이·소속 불일치 및 배경 표 호스트 줄 생략은 보정하고 실행 증거를 남겼다.
+- 원본 `width-*.hwp`의 저장 줄은 200자에 1개다. 한컴 PDF는 글자를 겹치고 원 PR의 정식 계약은
+  너비에 맞춘 여러 줄 재조판을 요구한다. 이 입력에서 두 결과를 동시에 만족한다고 주장할 수 없다.
+  원본과 실패 PDF를 보존하고 정상 저장 대조군의 결과를 분리했다. 단순히 합성/기존 차이라고
+  분류하여 보류를 해제하지 않았으며, 원본 PDF 일치 주장은 여전히 미충족이다.
+- 정상 저장 대조군 7쪽의 큰 위치·누락선은 해소됐다. 폰트/가는 선 래스터, empty 합성의 약 1.4px
+  글자 위치 및 약 6px 후행 테두리 차이는 남는다. 실문서 4쪽의 기존 차이는 이번 변경 전후 동일하다.
+- 혼합 텍스트/객체 run의 연결 글자 테두리, 쪽 분할 객체 테두리 및 비공개 7쪽 원본은 검증 범위에
+  포함하지 않는다. 작은 assertion·전체 회귀 통과를 그 범위의 PDF 외형 일치로 확대하지 않는다.
+
+### 최종 빌드 계보
+
+기준 source는 `fbc14758f` 위 작업 트리의 메인터너 보정이다. 원 PR head의 CI를 보정 head의
+검증 결과로 재사용하지 않는다. Native CLI는 후속 workspace build와 구분해 캡처 시점의
+바이너리를 임시 경로에 보존했다. 원문·PDF 해시는 위 fixture README에 기록했다.
+
+| 캡처 산출물 | SHA256 |
 | --- | --- |
-| `rhwp` | `383cc512fd9cc8d5726b864f8d5627dbacf668dfe63da09094651951c4299adf` |
-| `rhwp.js` | `707049ae519de26779c842eec40f94e016b09bda2688fa721a37d2ae670c2f26` |
-| `rhwp_bg.wasm` | `cabe050d9ff6f6eaf603422acec0f203f8c8432143511dc41fe71cef2f27791b` |
+| Native CLI | `5c6e138fa32b32983d5fe0550733fe25dbb1640f90cab645030cf18e6336c1f3` |
+| fresh rhwp.js | `707049ae519de26779c842eec40f94e016b09bda2688fa721a37d2ae670c2f26` |
+| fresh rhwp_bg.wasm | `8db65b047f0c878da2800bdf3868843e5590575cda6966a050265cbf8aad8b72` |
 
-### 실행한 검사와 미실행 항목
+| 보정 production source | SHA256 |
+| --- | --- |
+| `src/renderer/composer.rs` | `77335344cb0cbdf79e665aabce6fed2c1fa98a0b8c7946fc8cffa628b8a46757` |
+| `src/renderer/layout.rs` | `cb1911fd337c0e6cf1f01cda3355fb56dd09dab954b7577512ba23453a918d1d` |
+| `src/renderer/layout/paragraph_layout.rs` | `47a8232c376afc88989020571f9315bb3ab903926ec0542047da42f070a6eb3b` |
+| `src/renderer/layout/table_layout.rs` | `07fce5df5883b3ee8a7e3bc8dd8fb4543b2b4e00b6127d71eeb8c976d6d0b877` |
+| `src/renderer/layout/table_partial.rs` | `0bb5e322b66fc7b19476ad0632de31a239739d266804c5ff9b82564585fb2e3c` |
 
-- `stored_nested_content_flow`: **5/5 PASS**, 기존 3개 + 빈 선행 줄/가로 앵커 + 한컴 PDF 위치/테두리.
-- `issue_5787_nested_square_table_horz_offset`: **1/1 PASS**.
-- `issue_5711_para_border_negative_spacing`: **2/2 PASS**.
-- `issue_6656_line_advance_text_height`: **1/1 PASS**.
-- 최종 Native CLI build, fresh WASM release build/wasm-opt, `cargo fmt --all -- --check`: PASS.
-- 전체 nextest: 사용자 중단(exit 143), PASS 아님. 이후 전체 회귀 재개 없음.
-- 최종 변경의 Clippy 3종 / Native Skia / 통합 head CI: 미실행, push 준비 완료로 표현하지 않는다.
-
-### 남은 보류 사유
-
-1. **원본 합성 HWP/PDF의 시각 불일치**: 비정상 저장 캐시에서 한컴 출력은 글자가 겹친다.
-   정상 대조군 통과를 이 원본의 일치로 바꾸어 보고하지 않는다.
-2. **TAC 표의 글자 테두리 미재현**: 정상 대조군에도 표 하단 아래 추가 외곽선이 PDF에 남는다.
-   [글자 테두리만 끈 통제 입력](../../../tests/fixtures/pr7200_hancom_recomposed/host-char-border-off.hwpx)과
-   [같은 엔진 PDF](../../../pdf/pr7200/host-char-border-off-2020.pdf)에서 그 선이 사라지는 것을 확인했다.
-   셀/문단 테두리 중복으로 지워도 되는 선이 아니다. 실제 글자처럼 취급 개체의 테두리 영역 계약을
-   확인하지 못한 상태이므로 임의의 고정 높이를 더해 맞추지 않았다.
-3. 폰트/미세 위치·선 래스터 차이도 남는다. 특히 원본의 저장 메트릭을 한컴이 다시 계산한 차이와
-   실제 renderer 차이를 분리한다. 아직 외형 일치·보류 해제·merge 승인으로 판정하지 않는다.
-
-`AGENTS.md`/`CLAUDE.md`에는 최종 소비 위치 역추적, 빈 줄 등 실제 반례의 정식 실행,
-렌더링 변경의 Visual Sweep/standalone overlay 직접 판독, 큰 차이가 남으면 전체 회귀보다
-원인 수정/재캡처를 먼저 할 것, 대조군 통과를 원본의 통과로 바꾸어 보고하지 않을 것을 보완했다.
+최종 실행 경로는 `/private/tmp/rhwp-pr7200-review-20260916/stage2-final-*`이며, raw log·JSON은
+커밋하지 않는다. `visual_sweep.py --rhwp-bin target/pr7200-review-20260916/debug/rhwp`에
+위 표의 동일 입력/PDF, `--pages 1`(실문서는 `--pages 1,2`)을 지정했다. WASM 실행에는
+`--wasm-pkg /private/tmp/rhwp-pr7200-review-20260916/stage2-final-wasm-pkg`를 추가했다.
+수정 전 증거와 원본 실패 자료를 남기고, 최종 대표 PNG만 기존 경로에 갱신했다.

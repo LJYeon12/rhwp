@@ -2408,6 +2408,119 @@ impl LayoutEngine {
             .fold(0.0f64, f64::max)
     }
 
+    /// A standalone object run has one border owner. Mixed text/object runs
+    /// require joining at the line/run level and are not decorated a second time.
+    pub(super) fn standalone_table_char_border_fill(
+        para: Option<&Paragraph>,
+        table: &crate::model::table::Table,
+        styles: &ResolvedStyleSet,
+    ) -> u16 {
+        let Some(para) = para else {
+            return 0;
+        };
+        if !table.common.treat_as_char
+            || para
+                .text
+                .chars()
+                .any(|c| c > '\u{001f}' && c != '\u{fffc}' && !c.is_whitespace())
+            || para
+                .controls
+                .iter()
+                .filter(|c| {
+                    matches!(
+                        c,
+                        Control::Table(_)
+                            | Control::Picture(_)
+                            | Control::Shape(_)
+                            | Control::Equation(_)
+                    )
+                })
+                .count()
+                != 1
+        {
+            return 0;
+        }
+        let Some(ci) = para
+            .controls
+            .iter()
+            .position(|c| matches!(c, Control::Table(_)))
+        else {
+            return 0;
+        };
+        let char_id = if let Some(raw) = para.empty_control_stream_position(ci) {
+            para.char_shapes
+                .iter()
+                .rev()
+                .find(|s| s.start_pos <= raw)
+                .or_else(|| para.char_shapes.first())
+                .map(|s| s.char_shape_id)
+        } else {
+            para.control_text_positions()
+                .get(ci)
+                .and_then(|&p| para.char_shape_id_at(p))
+        };
+        char_id
+            .and_then(|id| styles.char_styles.get(id as usize))
+            .filter(|style| {
+                style.border_fill_id > 0
+                    && styles
+                        .border_styles
+                        .get(usize::from(style.border_fill_id) - 1)
+                        .is_some_and(|border| {
+                            border.borders.iter().any(|edge| {
+                                edge.line_type != crate::model::style::BorderLineType::None
+                            })
+                        })
+            })
+            .map_or(0, |style| style.border_fill_id)
+    }
+
+    fn paint_standalone_table_char_border(
+        &self,
+        tree: &mut PageLayoutContext,
+        node: &mut RenderNode,
+        table: &crate::model::table::Table,
+        styles: &ResolvedStyleSet,
+        border_fill_id: u16,
+        bounds: BoundingBox,
+    ) {
+        let Some(style) = styles.border_styles.get(usize::from(border_fill_id) - 1) else {
+            return;
+        };
+        // Hancom 2020 independent PDFs: vertical character-decoration margins
+        // have a 2.5 mm floor (708 HWPUNIT). 700/800 HU and one/both-side
+        // 1000/2000 HU controls distinguish this from a fixed bottom offset.
+        // See tests/fixtures/pr7200_hancom_recomposed/README.md. This is a paint
+        // contract, not the physical outer margin used by table layout.
+        const MIN_DECORATION_MARGIN_HU: i32 = 708;
+        let top = i32::from(table.outer_margin_top);
+        let bottom = i32::from(table.outer_margin_bottom);
+        let y = bounds.y - hwpunit_to_px(top, self.dpi);
+        let height = bounds.height
+            + hwpunit_to_px(
+                top.max(MIN_DECORATION_MARGIN_HU) + bottom.max(MIN_DECORATION_MARGIN_HU),
+                self.dpi,
+            );
+        let x = bounds.x;
+        let right = x + bounds.width;
+        for (index, x1, y1, x2, y2) in [
+            (0, x, y, x, y + height),
+            (1, right, y, right, y + height),
+            (2, x, y, right, y),
+            (3, x, y + height, right, y + height),
+        ] {
+            node.children
+                .extend(super::border_rendering::create_border_line_nodes(
+                    tree,
+                    &style.borders[index],
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                ));
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn layout_table(
         &self,
@@ -2435,6 +2548,7 @@ impl LayoutEngine {
         clamp_header_negative_para_offset: bool,
         physical_outer_box_paint_inset: bool,
         resolved_table_top: Option<f64>,
+        host_char_border_fill_id: u16,
     ) -> f64 {
         self.layout_table_with_wrapper_margin(
             tree,
@@ -2461,6 +2575,7 @@ impl LayoutEngine {
             clamp_header_negative_para_offset,
             physical_outer_box_paint_inset,
             resolved_table_top,
+            host_char_border_fill_id,
             false,
         )
     }
@@ -2492,6 +2607,7 @@ impl LayoutEngine {
         clamp_header_negative_para_offset: bool,
         physical_outer_box_paint_inset: bool,
         resolved_table_top: Option<f64>,
+        host_char_border_fill_id: u16,
         wrapper_margin_already_applied: bool,
     ) -> f64 {
         // [#6929] 진입 시점의 단 상태 — 이후 이 함수가 자식을 붙이므로 먼저 찍어 둔다.
@@ -2509,7 +2625,11 @@ impl LayoutEngine {
         // controls.len() == 1 가드는 두지 않는다 — exam_social.hwp pi=15 (PR #681)
         // 처럼 정렬 마커 등 다른 control 이 동거하는 케이스에서 unwrap + 외곽선 분기를
         // 모두 보존해야 하므로 find_map 으로 첫 nested table 만 추출한다.
-        if table.row_count == 1 && table.col_count == 1 && table.cells.len() == 1 {
+        if host_char_border_fill_id == 0
+            && table.row_count == 1
+            && table.col_count == 1
+            && table.cells.len() == 1
+        {
             let cell = &table.cells[0];
             if cell.paragraphs.len() == 1 {
                 let p = &cell.paragraphs[0];
@@ -2723,6 +2843,7 @@ impl LayoutEngine {
                             clamp_header_negative_para_offset,
                             false,
                             None,
+                            0,
                             true,
                         );
 
@@ -3390,6 +3511,19 @@ impl LayoutEngine {
             // 720.0, 그림 749.4, 용지 793.7). 본문으로 잡으면 이 축이 통째로 닫힌다.
             self.current_paper_width.get(),
         );
+
+        // Object character decoration uses the final physical table box. Its
+        // minimum decoration margins must never feed row height or flow advance.
+        if nested_split.is_none() && host_char_border_fill_id > 0 {
+            self.paint_standalone_table_char_border(
+                tree,
+                &mut table_node,
+                table,
+                styles,
+                host_char_border_fill_id,
+                BoundingBox::new(table_x, table_y, table_width, table_height),
+            );
+        }
 
         col_node.children.push(table_node);
 
@@ -7094,6 +7228,11 @@ impl LayoutEngine {
                                     clamp_header_negative_para_offset,
                                     false,
                                     None,
+                                    Self::standalone_table_char_border_fill(
+                                        Some(para),
+                                        nested_table,
+                                        styles,
+                                    ),
                                 );
                                 inline_x += tac_om_l + tac_w + tac_om_r;
                                 // para_y는 TAC 표 높이만큼 갱신 (같은 문단 내 다음 표도 같은 y)
@@ -7253,6 +7392,11 @@ impl LayoutEngine {
                                 clamp_header_negative_para_offset,
                                 false,
                                 None,
+                                Self::standalone_table_char_border_fill(
+                                    Some(para),
+                                    nested_table,
+                                    styles,
+                                ),
                             );
                             if let Some(advance) = self.nested_table_flow_advance(
                                 nested_table,
@@ -8427,17 +8571,19 @@ impl LayoutEngine {
         let mut flow_y = 0.0;
         for (pidx, (para, composed)) in paragraphs.iter().zip(composed_paras).enumerate() {
             let style = styles.para_styles.get(para.para_shape_id as usize);
-            let has_block_table = para
-                .controls
-                .iter()
-                .any(|c| matches!(c, Control::Table(t) if !t.common.treat_as_char));
-            let spacing_before = if pidx > 0 && !has_block_table {
+            let has_flow_block_table = para.controls.iter().any(|c| {
+                matches!(c, Control::Table(t)
+                    if !t.common.treat_as_char && !self.nested_table_is_overlay(t))
+            });
+            let spacing_before = if pidx > 0 && !has_flow_block_table {
                 style.map_or(0.0, |s| s.spacing_before)
             } else {
                 0.0
             };
             let paragraph_top = flow_y + spacing_before;
-            if !has_block_table {
+            // 배경 객체는 흐름을 밀지 않아도 그 호스트 줄은 공간을 점유한다.
+            // 자리차지 표만 아래 group_advance가 줄 공간을 대신한다.
+            if !has_flow_block_table {
                 flow_y += self.calc_para_lines_height(
                     &composed.lines,
                     para,

@@ -4347,6 +4347,7 @@ impl LayoutEngine {
                             is_header,
                             false,
                             None,
+                            Self::standalone_table_char_border_fill(Some(para), t.as_ref(), styles),
                         );
                     }
                 }
@@ -5348,6 +5349,11 @@ impl LayoutEngine {
                                         false,
                                         false,
                                         None,
+                                        Self::standalone_table_char_border_fill(
+                                            Some(para),
+                                            t,
+                                            styles,
+                                        ),
                                     );
                                 }
                                 _ => {}
@@ -10598,6 +10604,7 @@ impl LayoutEngine {
                     false,
                     false,
                     None,
+                    Self::standalone_table_char_border_fill(Some(para), t, styles),
                 );
                 let layer = Self::render_layer_from_common(&t.common, para_index, control_index);
                 Self::push_layered_paper_children(paper_images, &mut tmp_node, layer);
@@ -10911,6 +10918,7 @@ impl LayoutEngine {
                         ctx.paragraph_float_placements
                             .get(&(para_index, control_index))
                             .map(|p| col_area.y + p.table_top),
+                        Self::standalone_table_char_border_fill(Some(para), t, styles),
                     )
                 };
                 let table_flow_end = table_visual_end - physical_outer_box_paint_inset_y;
@@ -12510,6 +12518,11 @@ impl LayoutEngine {
                                 false,
                                 false,
                                 None,
+                                Self::standalone_table_char_border_fill(
+                                    Some(para),
+                                    inline_t,
+                                    styles,
+                                ),
                             );
                             y_offset = y_offset.max(tac_new_y);
                         }
@@ -14487,6 +14500,11 @@ impl LayoutEngine {
                         false,
                         false,
                         None,
+                        Self::standalone_table_char_border_fill(
+                            paragraphs.get(para_index),
+                            table,
+                            styles,
+                        ),
                     );
                     let layer =
                         Self::render_layer_from_common(&table.common, para_index, control_index);
