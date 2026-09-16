@@ -425,7 +425,7 @@ fn issue_6970_no_ls_square_wrap_columns_stay_inside_body_without_overlap() {
     use rhwp::diagnostics::layout_anomaly::{scan_page, AnomalyOptions};
     use rhwp::document_core::DocumentCore;
 
-    let bytes = read_fixture("samples/issue6970/synth_no_ls_square_wrap.hwp");
+    let bytes = read_fixture("tests/fixtures/issue_6970/synth_no_ls_square_wrap.hwp");
     let doc = DocumentCore::from_bytes(&bytes).expect("#6970 fixture parse");
     assert_eq!(doc.page_count(), 3, "#6970: 쪽수는 정답(3)과 같아야 한다");
 
