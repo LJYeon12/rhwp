@@ -9,12 +9,14 @@ last_verified: 2026-09-17
 
 ## 최종 판정
 
-**로컬 검토 승인 — 메인터너 보정으로 머지 보류 사유 해소.**
+**승인 — 메인터너 보정으로 머지 보류 사유 해소.**
 정상 저장본에서도 빈 선행 줄의 공간을 지우던 실제 배치 fallback을 보정했다.
 원본 width 합성 파일은 정상 한컴 저장본으로 갱신하고, 부실 저장 복구 검사는 메모리에서 캐시를
 손상시키는 별도 경계로 유지한다. 잘못된 한컴 겹침 PDF를 복구 렌더링의 정답으로 요구하지 않는다.
 최종 Native/fresh WASM 20쪽을 재캡처했으며 backend별 PNG가 모두 동일하다.
-최종 원격 head CI와 merge는 별도 단계다. 원격 push·GitHub comment·merge는 수행하지 않았다.
+원 PR에 보정 code head `10107f443`을 직접 push했고 Full CI·CodeQL·Render Diff·Adapter·Proptest가 통과했다.
+이 문서는 merge 전 검토 기록이다. review·오늘할일 trailing head의 검사와 실제 merge SHA·duration
+결과는 PR의 최종 검사 및 merge 후 댓글로 확인한다.
 
 진행 기록: [1회차](../../working/task_m100_7200_stage1.md),
 [2회차](../../working/task_m100_7200_stage2.md), [3회차](../../working/task_m100_7200_stage3.md).
@@ -24,6 +26,61 @@ PDF 버전 제한 제거는 `fbc14758f`에 별도 커밋했다. PDF 1.4 및 `Hwp
 
 사용자가 비공개 실제 7쪽 양식 대신 **함께 커밋된 HWP 파일로 대체**하도록 지정했다.
 비공개 원본 부재 자체를 보류 사유로 삼지 않는다. 그 원본 7쪽 개선은 reviewer 미검증이다.
+
+## 원 PR 직접 push와 검증 계보 (2026-09-17)
+
+- 사용자 지시로 별도 통합 PR을 만들지 않고 **PR #7200**의
+  `LJYeon12/rhwp:feat/disability-page7-local`에 직접 반영했다.
+- 원 source `2543382e757967183be1938893ac2c5be2c0c16e`는 그대로 조상으로 유지했다.
+  미공개 메인터너 커밋만 같은 로컬 branch에서 그 위로 replay했다. 원 기여자 commit의
+  rebase/amend/reset이나 force-push는 하지 않았다.
+- fork API의 `permissions.push=false`, `maintainerCanModify=true`를 확인했고, LFS 대상
+  0개/미전송 LFS object 0개를 판독한 뒤 `GIT_LFS_SKIP_PUSH=1` dry-run과 실제 push가 성공했다.
+  remote ref와 PR head가 모두 `10107f443b3a701663891e91678509c28b206ecc`임을 재확인했다.
+- 실제 `refs/pull/7200/merge`는 `7d946a5e499f2f6e85edd1479055b51720ba5bdf`이며 부모는
+  최신 devel `222c8c4819de414898bf5b15608b0d0d394a3748`과 보정 head `10107f443`이다.
+  tree `cc9b35a428c6a68fcbcc0fda8a92e7281be53a14`는 전체 로컬 검증을 마친 `6dd78f9e5`의
+  tree와 **완전히 동일**하다. PR API의 오래된 base SHA 표기만으로 테스트 대상을 추정하지 않았다.
+- [Full CI 35122939525](https://github.com/edwardkim/rhwp/actions/runs/35122939525),
+  [CodeQL 35122939551](https://github.com/edwardkim/rhwp/actions/runs/35122939551),
+  [Render Diff 35122939151](https://github.com/edwardkim/rhwp/actions/runs/35122939151),
+  [Adapter 35122939491](https://github.com/edwardkim/rhwp/actions/runs/35122939491),
+  [Proptest 35122939988](https://github.com/edwardkim/rhwp/actions/runs/35122939988): 모두 SUCCESS.
+  CI preflight는 `fast_pass=false`, `no-trailing-review-only-commits`로 Full 검증을 실행했다.
+  CI의 WASM Build skip은 fresh WASM 성공으로 세지 않으며 로컬 실제 빌드/실행 증거를 사용한다.
+
+### 로컬 기록 SHA와 공개 원 PR SHA 대응
+
+아래 및 fixture README에 남은 SHA는 로컬 통합 검토 당시의 값이다. 원 PR에서 과거 입력·실패 PDF·PNG를
+재현할 때는 오른쪽 공개 commit의 **같은 경로**를 사용한다. 각 공개 commit과 위 최신 devel의
+자동 merge tree가 해당 로컬 commit tree와 동일함을 5건 모두 확인했다.
+예를 들어 원래 손상 width/empty 입력과 PDF는 `f76afb6d4`의 같은 파일 경로에서 복원할 수 있다.
+
+| 로컬 통합 검토 SHA | 공개 원 PR SHA | 내용 |
+| --- | --- | --- |
+| `281795d20` | `4f302475ca879e99a711d93dd1d9d329854f8b53` | 최초 검토·빈 줄 실패 증거 |
+| `4ce8d253c` | `8de8745a0a5c4f8dd2608faec30374dc60234f0c` | 1회차 보정 |
+| `fbc14758f` | `7c395188169587207a78c96976326f87522f7c69` | PDF 버전 제한 제거 지침 |
+| `78fd17cf8` | `f76afb6d459bf613eafc94034b201fc340512a14` | 2회차 보정·과거 합성 입력 보존 |
+| `6dd78f9e5` | `10107f443b3a701663891e91678509c28b206ecc` | 최종 앵커 보정·입력 정상화 |
+
+## Merge 후 contributor PR comment 계획
+
+최종 trailing head의 검사 성공과 merge를 확인한 뒤 실제 merge SHA·최종 CI URL·duration 갱신 결과를
+한국어로 설명하고 감사한다. [Visual Sweep 정본](https://github.com/edwardkim/rhwp/blob/devel/mydocs/manual/verification/visual_sweep_guide.md#github-merge-comment)을
+연결하고 다음 자료를 **merge SHA에 고정한 raw.githubusercontent.com URL로 이미지 삽입**한다.
+
+- 대표 review: `maintainer_width_top_review_001.png`, `maintainer_empty_top_review_001.png`.
+- 실제 standalone overlay 6개: `maintainer_width_{top,center,bottom}_overlay_001.png`,
+  `maintainer_empty_{top,center,bottom}_overlay_001.png`.
+- 모두 `mydocs/pr/assets/pr7200_review/`에 있다. 비교 범위 20쪽·자동 후보 0/20·Native/WASM 동일
+  20/20 및 아래 실제 pixel/ink 지표 6개를 함께 기록한다. 자동 보조값은 사람의 정확도 판정이
+  아님을 설명하고, 정상 입력의 5줄·빈 줄·표/End/테두리 판정과 남은 래스터 차이를 구분한다.
+- 정상 저장 앵커의 22.69px 오류 보정과 손상 캐시/정상 저장본의 별도 검증을 설명한다.
+  비공개 원본 7쪽은 reviewer 미검증이며 기존 #2470 2쪽 사진/행 높이와 #7150은 이번 PR의
+  해결·종료 근거가 아님을 명시한다. 관련 closing issue가 없으므로 새 issue를 임의로 닫지 않는다.
+- UTF-8 본문 파일과 `--body-file`로 게시하고, 이미지 URL·한국어·실제 head/merge SHA를 API로
+  다시 확인한다. 병합 후 검증 CI는 실행하지 않고 duration 갱신 결과만 확인한다.
 
 ## 3회차 — 최종 입력 보정과 정상 저장 앵커 보존
 
@@ -104,7 +161,7 @@ rhwp 표시는 render-tree의 소수 첫째 자리 직렬화 값이다. 정식 �
 전체 Cargo 게이트는 `stage3/gates.sh`로 전용 target에서 순차 실행했다. 선택된 새 samples 28개는
 전체 회귀의 `RHWP_SECURITY_SWEEP_SAMPLES_JSON`에 전달했다. fixture까지 포함한 36개는 최종
 CLI로 추가 직접 검사했다. source-side unit test를 바꾸지 않아 unit-tier 증분 검사는 비해당이다.
-원 head CI를 이 보정 source의 결과로 재사용하지 않았으며, 원격 push 후 최신 head CI는 아직 미실행이다.
+원 head CI를 이 보정 source의 결과로 재사용하지 않았다. 이후 직접 push한 code head의 Full CI 성공은 위 원격 검증 절에 기록했다.
 
 | 대상 | SHA256 |
 | --- | --- |
