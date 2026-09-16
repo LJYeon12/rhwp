@@ -2985,6 +2985,8 @@ pub struct LayoutEngine {
     /// para_index: 본 range 가 속한 paragraph 인덱스 (Task #468: cross-column 박스 연속 검출용)
     para_border_ranges:
         std::cell::RefCell<Vec<(u16, f64, f64, f64, f64, f64, f64, bool, bool, usize)>>,
+    /// 셀 문단 큐가 본문/부모 셀과 분리된 범위 안인지 여부.
+    collect_cell_para_borders: std::cell::Cell<bool>,
     /// 문단 외곽선 box geometry override (Task #463): wrap=Square 호스트 문단의
     /// 텍스트는 좁은 wrap_area 에서 layout 되지만, 외곽선은 원래 col_area 의
     /// 전체 너비로 그려야 PDF 와 일치한다 (인라인 floating 표를 박스가 둘러쌈).
@@ -3177,6 +3179,7 @@ impl LayoutEngine {
             page_border_fill_first_page_only: std::cell::Cell::new((false, false)),
             file_name: std::cell::RefCell::new(String::new()),
             para_border_ranges: std::cell::RefCell::new(Vec::new()),
+            collect_cell_para_borders: std::cell::Cell::new(false),
             border_box_override: std::cell::Cell::new(None),
             layout_overflows: std::cell::RefCell::new(Vec::new()),
             layout_table_overlaps: std::cell::RefCell::new(Vec::new()),
@@ -4344,6 +4347,7 @@ impl LayoutEngine {
                             is_header,
                             false,
                             None,
+                            Self::standalone_table_char_border_fill(Some(para), t.as_ref(), styles),
                         );
                     }
                 }
@@ -5345,6 +5349,11 @@ impl LayoutEngine {
                                         false,
                                         false,
                                         None,
+                                        Self::standalone_table_char_border_fill(
+                                            Some(para),
+                                            t,
+                                            styles,
+                                        ),
                                     );
                                 }
                                 _ => {}
@@ -6471,6 +6480,12 @@ impl LayoutEngine {
                     None
                 }
             };
+            let connects = |pi: usize| {
+                composed
+                    .get(pi)
+                    .and_then(|p| styles.para_styles.get(p.para_style_id as usize))
+                    .is_some_and(|style| style.border_connect)
+            };
             // 그룹 튜플: (bf_id, x, y_start, w, y_end, top_inset, bottom_inset,
             //              is_partial_start, is_partial_end, first_para_idx, last_para_idx)
             let mut groups: Vec<(u16, f64, f64, f64, f64, f64, f64, bool, bool, usize, usize)> =
@@ -6498,7 +6513,7 @@ impl LayoutEngine {
                     } else {
                         last_sig.is_some() && last_sig == cur_sig
                     };
-                    if same_visual && (y_start - last.4) < 30.0 {
+                    if same_visual && connects(last.10) && (y_start - last.4) < 30.0 {
                         last.4 = y_end;
                         last.6 = bottom_inset;
                         // 그룹의 partial_end 는 마지막 range 의 값으로 갱신.
@@ -6558,14 +6573,14 @@ impl LayoutEngine {
                         .unwrap_or(0)
                 };
 
-                if !g.7 && first_pi > 0 {
+                if !g.7 && first_pi > 0 && connects(first_pi - 1) {
                     let prev_sig = stroke_sig(para_bf(first_pi - 1));
                     if prev_sig.is_some() && prev_sig == group_sig {
                         g.7 = true;
                     }
                 }
 
-                if !g.8 {
+                if !g.8 && connects(last_pi) {
                     let next_sig = stroke_sig(para_bf(last_pi + 1));
                     if next_sig.is_some() && next_sig == group_sig {
                         g.8 = true;
@@ -6602,7 +6617,7 @@ impl LayoutEngine {
                     bottom_inset,
                     is_partial_start,
                     is_partial_end,
-                    _,
+                    first_para_idx,
                     _,
                 ),
             ) in groups.clone().into_iter().enumerate()
@@ -6631,14 +6646,14 @@ impl LayoutEngine {
                     .unwrap_or(0.0);
                 // Task #321 v6: ParaShape::border_spacing 정식 반영 + stroke 있을 때 default 2px 최소.
                 // 인접 border 그룹과 충돌 방지를 위해 인접 경계는 inset 0.
-                const DEFAULT_MIN_INSET: f64 = 2.0;
+                let default_min_inset: f64 = if connects(first_para_idx) { 2.0 } else { 0.0 };
                 let top_pad = if stroke_width > 0.0 && !prev_touches {
-                    top_inset.max(DEFAULT_MIN_INSET)
+                    top_inset.max(default_min_inset)
                 } else {
                     top_inset
                 };
                 let bot_pad = if stroke_width > 0.0 && !next_touches {
-                    bottom_inset.max(DEFAULT_MIN_INSET)
+                    bottom_inset.max(default_min_inset)
                 } else {
                     bottom_inset
                 };
@@ -10589,6 +10604,7 @@ impl LayoutEngine {
                     false,
                     false,
                     None,
+                    Self::standalone_table_char_border_fill(Some(para), t, styles),
                 );
                 let layer = Self::render_layer_from_common(&t.common, para_index, control_index);
                 Self::push_layered_paper_children(paper_images, &mut tmp_node, layer);
@@ -10902,6 +10918,7 @@ impl LayoutEngine {
                         ctx.paragraph_float_placements
                             .get(&(para_index, control_index))
                             .map(|p| col_area.y + p.table_top),
+                        Self::standalone_table_char_border_fill(Some(para), t, styles),
                     )
                 };
                 let table_flow_end = table_visual_end - physical_outer_box_paint_inset_y;
@@ -12276,8 +12293,11 @@ impl LayoutEngine {
                 // 표 앞 가시 개체(그림/도형/표) 보유 문단은 test_521 계약(이중 가산
                 // 방지, host_seg=None)을 유지한다 — 사영이 이를 우회하면 ls 가 재가산
                 // 된다(156556059 p3 pi40: TAC 앞 Shape, +10.4px 반증 실측).
-                let projected_seg = if self.profile.get().hwpx_stored_layout()
-                    && all_segs_stored
+                // HWP5와 그 marker HWPX도 컨트롤 번호와 저장 줄 번호가 다르다.
+                // 앞 텍스트 줄의 음수 줄간격으로 표 뒤 흐름을 되돌리지 않도록,
+                // 표 높이를 담은 실제 소속 줄을 같은 사영으로 고른다.
+                let projected_seg = if (self.profile.get().hwp5_stored_pagination_layout()
+                    || (self.profile.get().hwpx_stored_layout() && all_segs_stored))
                     && only_invisible_before_tac
                 {
                     let table_h = para.controls.get(control_index).and_then(|c| match c {
@@ -12404,6 +12424,34 @@ impl LayoutEngine {
                 if outer_margin_bottom_px > 0.0 && !stored_lh_covers_om {
                     y_offset += outer_margin_bottom_px;
                 }
+                // TAC 표도 호스트 문단의 점유 영역이다. 별도 PageItem 경로로
+                // 그려져 layout_composed_paragraph를 거치지 않아도 문단 외곽선을
+                // 누락하지 않는다. 이미 텍스트 범위를 수집했다면 같은 문단만 확장한다.
+                if let Some(ps) = styles
+                    .para_styles
+                    .get(ps_id)
+                    .filter(|ps| ps.border_fill_id > 0)
+                {
+                    let mut ranges = self.para_border_ranges.borrow_mut();
+                    if let Some(range) = ranges.iter_mut().rev().find(|range| range.9 == para_index)
+                    {
+                        range.2 = range.2.min(para_y_for_table);
+                        range.4 = range.4.max(y_offset);
+                    } else if y_offset > para_y_for_table {
+                        ranges.push((
+                            ps.border_fill_id,
+                            col_area.x,
+                            para_y_for_table,
+                            col_area.width,
+                            y_offset,
+                            ps.border_spacing[2],
+                            ps.border_spacing[3],
+                            false,
+                            false,
+                            para_index,
+                        ));
+                    }
+                }
                 return (y_offset, true);
             }
             // ── 같은 문단의 인라인 TAC 표 렌더링 ──
@@ -12470,6 +12518,11 @@ impl LayoutEngine {
                                 false,
                                 false,
                                 None,
+                                Self::standalone_table_char_border_fill(
+                                    Some(para),
+                                    inline_t,
+                                    styles,
+                                ),
                             );
                             y_offset = y_offset.max(tac_new_y);
                         }
@@ -14447,6 +14500,11 @@ impl LayoutEngine {
                         false,
                         false,
                         None,
+                        Self::standalone_table_char_border_fill(
+                            paragraphs.get(para_index),
+                            table,
+                            styles,
+                        ),
                     );
                     let layer =
                         Self::render_layer_from_common(&table.common, para_index, control_index);

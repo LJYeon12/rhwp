@@ -1467,8 +1467,11 @@ impl LayoutEngine {
                         &cell.paragraphs,
                         styles,
                     );
-                    let nested_bottom =
-                        self.calc_nested_controls_bottom_height(&cell.paragraphs, styles);
+                    let nested_bottom = self.calc_nested_controls_bottom_height(
+                        composed_store.eager_slice(),
+                        &cell.paragraphs,
+                        styles,
+                    );
                     vpos_h
                         .max(line_h)
                         .max(nested_bottom)
@@ -3284,6 +3287,11 @@ impl LayoutEngine {
                                             clamp_header_negative_para_offset,
                                             false,
                                             None,
+                                            Self::standalone_table_char_border_fill(
+                                                Some(para),
+                                                nested_table,
+                                                styles,
+                                            ),
                                         )
                                     };
                                     let visible_table_h = mixed_nested_split
