@@ -9,22 +9,120 @@ last_verified: 2026-09-17
 
 ## 최종 판정
 
-**머지 보류 — 메인터너 보정의 로컬 필수 검증 완료, 원본 합성 PDF의 시각 일치 주장은 미충족.**
-빈 선행 줄·가로 앵커·문단 테두리에 이어, 단독 TAC 표의 글자 테두리도 복원했다.
-정상 한컴 저장본의 Top/Center/Bottom에서 5줄·뒤 문단·표 외곽을 직접 대조했으며,
-추가 여백 경계 4개를 포함한 Native/fresh WASM 23쪽은 서로 동일하다.
-원본 합성 HWP의 무효 저장 줄에서 발생하는 한컴 PDF의 글자 겹침은 별도 실패 증거로 유지한다.
-정상 대조군 통과를 그 원본의 시각 일치로 바꾸어 보고하지 않는다.
-원격 push·GitHub comment·merge는 수행하지 않았다.
+**로컬 검토 승인 — 메인터너 보정으로 머지 보류 사유 해소.**
+정상 저장본에서도 빈 선행 줄의 공간을 지우던 실제 배치 fallback을 보정했다.
+원본 width 합성 파일은 정상 한컴 저장본으로 갱신하고, 부실 저장 복구 검사는 메모리에서 캐시를
+손상시키는 별도 경계로 유지한다. 잘못된 한컴 겹침 PDF를 복구 렌더링의 정답으로 요구하지 않는다.
+최종 Native/fresh WASM 20쪽을 재캡처했으며 backend별 PNG가 모두 동일하다.
+최종 원격 head CI와 merge는 별도 단계다. 원격 push·GitHub comment·merge는 수행하지 않았다.
 
 진행 기록: [1회차](../../working/task_m100_7200_stage1.md),
-[2회차](../../working/task_m100_7200_stage2.md).
+[2회차](../../working/task_m100_7200_stage2.md), [3회차](../../working/task_m100_7200_stage3.md).
 PDF 버전 제한 제거는 `fbc14758f`에 별도 커밋했다. PDF 1.4 및 `Hwp 2020 0.0.0.0`은
-보류 사유가 아니다. 실제 입력 대응·출력 결함을 생성 메타데이터와 구분한다.
+보류 사유가 아니다. 이번 empty 변환의 실제 한컴은 `11.0.0.9136`이며 앞선 width의
+`12.0.0.4605`와 구분한다. 선택 MCP engine은 둘 다 `2020`이다.
 
 사용자가 비공개 실제 7쪽 양식 대신 **함께 커밋된 HWP 파일로 대체**하도록 지정했다.
-이에 `width-top.hwp`, `width-center.hwp`, `width-bottom.hwp`를 한컴 PDF로 변환해 전후 비교했다.
-비공개 원본 부재 자체를 이번 보류 사유로 삼지 않는다. 그 원본 7쪽 개선은 reviewer 미검증이다.
+비공개 원본 부재 자체를 보류 사유로 삼지 않는다. 그 원본 7쪽 개선은 reviewer 미검증이다.
+
+## 3회차 — 최종 입력 보정과 정상 저장 앵커 보존
+
+### 원인과 실제 수정
+
+- 1·2회차는 저장 vpos가 reset된 경로를 공통 sequential 계획으로 보정했지만, 정상 저장 경로의
+  `has_preceding_text=false` fallback은 이미 계산한 문단 원점을 다시 `inner_area.y`로 덮어썼다.
+  빈 문단의 1688HU 공간이 지워져 Top의 중첩 표가 **22.69px 위**에 놓였다.
+- `src/renderer/layout/table_layout.rs`에서 이 fallback이 `para_y_before_compose`를 소비하도록
+  고쳤다. 새 clamp·허용 오차·문서 ID 예외는 없다. 앞 글자가 있는 flow와 reset 공통 계획은 유지한다.
+- width 원본은 200자/1개 줄 캐시인 반면 재조판 테스트는 5줄을 요구했다. 정상 재생성본을
+  **기존 samples 경로에 반영**하고 별도 fixture 폴더의 같은 HWP 3개는 제거했다.
+  독립 PDF는 이미 있는 `width-*-recomposed-2020.pdf`를 재사용했다. 잘못된 원본과 실패
+  `pr7200-width-*-2020.pdf`·PNG는 `78fd17cf8`에 보존하며 현재 입력의 정답으로 쓰지 않는다.
+- `damaged_width_nodes`는 현재 정상 5줄을 확인한 뒤 메모리에서 1개 줄/0 앵커로 손상시켜
+  기존 복구·정렬 계약을 계속 검사한다. 원문을 정상화하면서 손상 캐시 검사를 없애지 않았다.
+- empty 입력도 저장 줄만 제거해 한컴에서 HWP→HWPX로 정상 저장하고 **최종 HWPX에서 PDF**를
+  출력했다. 원문·PDF는 기존 경로를 갱신했다. 기존 16px 합성 경계는 `cell-*-collapsed.hwpx`를
+  메모리에서 빈 문단으로 만드는 별도 검사로 유지한다. 생성 job과 해시는
+  [empty 기록](../../../tests/fixtures/pr7200_empty_leading_paragraph/README.md),
+  [width 기록](../../../tests/fixtures/pr7200_hancom_recomposed/README.md)에 있다.
+
+### 수정 전후 검사와 직접 판독
+
+`saved_empty_leading_paragraph_preserves_pdf_table_and_border_positions`는 동일한 최종 HWPX와
+PDF로 수정 전 FAIL / 보정 후 PASS다. 표 상단·End 위치·22.55px 문단 테두리를 직접 검사한다.
+수정 전 Top y=127.20px, 독립 PDF y=149.891px였고, 보정 후 세 정렬 모두 0.6px 위치 기준을
+통과했다. 관련 focused 7개 PASS에는 정상 width·손상 캐시·빈 줄·overlay·글자 테두리도 포함한다.
+
+| empty 정렬 | 보정 후 표 y / PDF y (px) | 보정 후 End y / PDF y (px) |
+| --- | ---: | ---: |
+| Top | 149.7 / 149.891 | 169.7 / 169.904 |
+| Center | 191.8 / 191.961 | 211.8 / 211.975 |
+| Bottom | 233.9 / 234.033 | 253.9 / 254.047 |
+
+rhwp 표시는 render-tree의 소수 첫째 자리 직렬화 값이다. 정식 검사에서는 반올림 전 값을 사용한다.
+
+수정 전 정상 empty Top: [compare](../assets/pr7200_review/before_saved_empty_top_compare_001.png) ·
+[overlay](../assets/pr7200_review/before_saved_empty_top_overlay_001.png) ·
+[review](../assets/pr7200_review/before_saved_empty_top_review_001.png).
+
+| 최종 입력 1쪽 | pixel / ink match (%) | 최종 fresh WASM 증적 |
+| --- | --- | --- |
+| width-top | 97.83054 / 8.27243 | [compare](../assets/pr7200_review/maintainer_width_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_top_review_001.png) |
+| width-center | 97.84435 / 10.37476 | [compare](../assets/pr7200_review/maintainer_width_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_center_review_001.png) |
+| width-bottom | 97.78025 / 9.25153 | [compare](../assets/pr7200_review/maintainer_width_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_width_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_width_bottom_review_001.png) |
+| empty-top | 97.73281 / 7.95094 | [compare](../assets/pr7200_review/maintainer_empty_top_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_top_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_top_review_001.png) |
+| empty-center | 97.69089 / 9.52964 | [compare](../assets/pr7200_review/maintainer_empty_center_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_center_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_center_review_001.png) |
+| empty-bottom | 97.65313 / 6.25195 | [compare](../assets/pr7200_review/maintainer_empty_bottom_compare_001.png) · [overlay](../assets/pr7200_review/maintainer_empty_bottom_overlay_001.png) · [review](../assets/pr7200_review/maintainer_empty_bottom_review_001.png) |
+
+직접 판독으로 width의 5줄·뒤 표/End·Top/Center/Bottom, empty의 빈 줄 점유·표 원점·후행
+테두리가 최종 원문에 대응하는 PDF와 맞는지 확인했다. 빈 문단의 약 6px 테두리 차이도 정상
+저장 메트릭과 실제 원점을 함께 반영한 최종 입력에서 해소됐다. 폰트 글리프 상자와 가는 선의
+래스터 차이는 남으며 **픽셀 전체 일치라고 판정하지 않는다**. PDF 벡터는 0.24pt(96DPI에서
+0.32px), rhwp도 약 0.3px이다. 낮은 ink 점수를 감추거나 선을 임의로 두껍게 만들지 않았다.
+
+같은 실행에서 여백 경계 4쪽, overlay 3쪽, 날짜 표 3쪽, 실문서 4쪽도 다시 캡처했다.
+전체 20쪽 Native/fresh WASM PNG가 동일하며, empty를 제외한 17쪽은 2회차 결과와 바이트가 같다.
+#2470 2쪽의 기존 사진/행 높이 차이 등은 새 개선으로 보고하지 않는다. 이 PR의 수정으로
+발생한 차이가 아니며 #7150 해결·종료 근거로도 사용하지 않는다.
+
+### 최종 검증 계보
+
+`78fd17cf8` 위 작업 트리의 아래 source 해시에서 빌드했다. 검증 후 source 변경은 없다.
+
+| 최종 게이트 | 결과 |
+| --- | --- |
+| focused | 7 PASS, 정상 empty 경계는 수정 전 FAIL / 보정 후 PASS |
+| release-test 전체 nextest | **9946 PASS / 0 FAIL / 51 skipped**, exit 0, 실행 302.072초 |
+| fmt / Native·WASM·workspace-all-targets Clippy | 모두 PASS |
+| workspace build / 고정 base suite 정책 | PASS, 48/48 targets |
+| Native Skia lib | **4112 PASS / 13 ignored**, exit 0 |
+| Native Skia 그림 / direct PDF export | **2 PASS / 4 PASS**, 각각 exit 0 |
+| Native / fresh WASM Visual Sweep | 20쪽 각각 재캡처, 페이지 PNG 20/20 바이트 동일 |
+| 최종 원문 보안 검사 | 36개 × hidden-text/injection(include-fields)/unicode = **108 clean** |
+| 문서 검사 | 변경 문서 5개 상대 링크, review 메타데이터 PASS |
+
+전체 Cargo 게이트는 `stage3/gates.sh`로 전용 target에서 순차 실행했다. 선택된 새 samples 28개는
+전체 회귀의 `RHWP_SECURITY_SWEEP_SAMPLES_JSON`에 전달했다. fixture까지 포함한 36개는 최종
+CLI로 추가 직접 검사했다. source-side unit test를 바꾸지 않아 unit-tier 증분 검사는 비해당이다.
+원 head CI를 이 보정 source의 결과로 재사용하지 않았으며, 원격 push 후 최신 head CI는 아직 미실행이다.
+
+| 대상 | SHA256 |
+| --- | --- |
+| `src/renderer/layout/table_layout.rs` | `222c0af37fe5874719307f4ad70265ab8d09e93e82b11b7046b40c7083feba03` |
+| `tests/cases/stored_nested_content_flow.rs` | `fd5b3ea5441fac52322205f77dec9c8027949faaceeca1d8a0f18e630e3f43e6` |
+| Native CLI | `4aedd219dde5fb388fed736e296719b44930185b90b0e486869d6cbc63abbcbb` |
+| fresh `rhwp.js` | `707049ae519de26779c842eec40f94e016b09bda2688fa721a37d2ae670c2f26` |
+| fresh `rhwp_bg.wasm` | `2ddb8a82a3819ed37f97a685381a4bbdccf82b97c7db3493942ef661533f2dfe` |
+
+raw 로그/JSON/TSV는 `/private/tmp/rhwp-pr7200-review-20260916/stage3`에만 두고 커밋하지 않는다.
+`sweep.py native|wasm`은 `visual_sweep.py --file-target ... --pages 1`과 실문서 `--pages 1,2`를
+실행한다. 96DPI/threshold32를 유지하고 compare·standalone overlay·review를 모두 생성했다.
+
+## 1·2회차 기록의 해석
+
+아래는 보정 전 입력과 이전 source에 대한 당시 검토다. 최종 판정은 위 3회차를 따른다.
+3회차에서 갱신한 width/empty 입력과 PNG를 과거 입력의 통과 증거로 읽지 않는다.
+과거 입력·이미지의 정확한 쌍은 `78fd17cf8`의 이 문서와 같은 commit의 파일로 재현할 수 있다.
 
 ## 원 PR 검토 대상과 계보 (보정 전)
 
@@ -315,7 +413,7 @@ nextest(exit 143)와 1차 전체의 4 FAIL은 이 결과에 합산하지 않는�
 Rust/Cargo 작업은 전용 target에서 순차 실행했다. baseline·golden·래칫 허용치와 원본 width
 입력/PDF는 변경하지 않았다. 원격 head CI는 보정 내용을 아직 검사한 것이 아니며 push·merge는 미수행이다.
 
-### 해결 범위와 남은 시각 판정
+### 2회차 당시 해결 범위와 남은 시각 판정 (3회차로 갱신)
 
 - 빈 선행 줄의 측정/배치 불일치, 80px 가로 앵커 이동, 누락 문단·객체 글자 테두리, 정상 저장 줄의
   높이·소속 불일치 및 배경 표 호스트 줄 생략은 보정하고 실행 증거를 남겼다.

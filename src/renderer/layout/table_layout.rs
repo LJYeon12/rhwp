@@ -6973,7 +6973,11 @@ impl LayoutEngine {
                         } else if has_preceding_text {
                             para_y
                         } else {
-                            inner_area.y
+                            // 빈 선행 문단도 줄 상자를 점유한다. 유효한 저장 앵커를
+                            // 적용하거나 앞 줄을 배치한 문단 원점을 셀 상단으로
+                            // 되돌리면, reset이 없는 정상 저장본에서도 그 공간이
+                            // 사라진다. 호스트의 문단 원점을 그대로 소비한다.
+                            para_y_before_compose
                         };
                         // [#3637] 중첩 표는 부모 셀 안에서 시작해야 한다. 앞 텍스트가 셀
                         // 밖으로 밀린 `para_y` 를 그대로 쓰면 컨테이너가 통째로 셀 아래에
