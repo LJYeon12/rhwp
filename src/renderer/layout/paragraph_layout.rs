@@ -5957,6 +5957,7 @@ impl LayoutEngine {
                 &cell_ctx,
                 &tab_stops,
                 tac_offsets_px,
+                &line_tac_offsets_for_width,
                 &shape_markers,
                 fn_positions,
                 &mut fn_marker_inserted,
@@ -6606,6 +6607,7 @@ impl LayoutEngine {
         cell_ctx: &Option<CellContext>,
         tab_stops: &[TabStop],
         tac_offsets_px: &[(usize, f64, usize)],
+        line_tac_offsets: &[(usize, f64, usize)],
         shape_markers: &[(usize, String)],
         fn_positions: &[(usize, u16, usize)],
         fn_marker_inserted: &mut [bool],
@@ -6654,6 +6656,26 @@ impl LayoutEngine {
             mut pending_right_leader_digit_render,
             mut current_line_reserved_tac_picture_height,
         } = st;
+        // [#7150] 정렬·방출이 사용하는 줄별 TAC 집합에서 표 앵커를 한 번 선택한다.
+        // 저장 UTF-16 줄 경계에서는 이전 줄 끝 표와 다음 줄 첫 개체가 같은 가시
+        // 문자 위치에 투영된다. composed.tac_controls를 문자 구간으로 다시 나누면
+        // 다른 줄의 표가 소유자로 섞인다. caller가 복원한 저장 줄 배정과 마지막
+        // run 끝 TAC를 포함한 공통 집합을 그대로 소비한다.
+        let line_table_owner = para.and_then(|p| {
+            line_tac_offsets
+                .iter()
+                .find_map(|(_, _, ci)| match p.controls.get(*ci) {
+                    Some(Control::Table(table)) if table.common.treat_as_char => {
+                        let h = hwpunit_to_px(table.common.height as i32, self.dpi);
+                        let mt = hwpunit_to_px(table.outer_margin_top as i32, self.dpi);
+                        let mb = hwpunit_to_px(table.outer_margin_bottom as i32, self.dpi);
+                        ((mt > 0.0 || mb > 0.0)
+                            && (h + mt + mb - 0.2..=h + mt + mb + 0.2).contains(&raw_lh))
+                        .then_some((h, mt))
+                    }
+                    _ => None,
+                })
+        });
         let is_last_run_of_line = |idx: usize| idx == comp_line.runs.len() - 1;
         // [#5679] 줄-말미 공백에 배정된 배분 여분(extra_word_sp) 회수분.
         // 배분 몫은 **내부 공백 수**로 나눈다(위 needs_justify 분기의
@@ -7899,41 +7921,28 @@ impl LayoutEngine {
                                 // 줄 높이를 정하는 가장 높은 표는 `lh == 밴드` 라 그대로
                                 // 이 분기에 남고, `#3386` 의 표본(`156678235` 4쪽: 한/글
                                 // 536.69 vs rhwp 537.30)도 표가 하나뿐이라 불변이다.
-                                // 그리고 그 줄이 **이 표 전용**이어야 한다 — 같은 줄에
-                                // TAC 표가 둘 이상이면 그 줄은 어느 한 표의 것이 아니다.
-                                // 세로 위치가 바깥여백과 무관하다는 것이 실측이다
-                                // (`21_언어_기출` 1쪽: 여백 283/283 과 0/0 인 두 표를 한/글이
-                                // **같은 y** 에 놓는다 — 여백이 관여하면 3.8px 벌어져야 한다).
-                                // 그러니 여백을 쓰는 이 분기는 줄을 독점한 표에만 준다.
-                                // 소속은 **이 줄** 로 센다 — `composed.lines[line_idx]` 의
-                                // char 구간은 텍스트·표 순서, 명시적 개행, 가용 너비가
-                                // 이미 반영된 줄 나눔 결과이고, 배치가 지금 소비하고 있는
-                                // 바로 그 구성이다. 문단 단위로 세면 다른 줄의 표까지
-                                // 끌어들여 이 줄의 사실을 왜곡한다.
-                                let line_start = comp_line.char_start;
-                                let line_end = composed
-                                    .lines
-                                    .get(line_idx + 1)
-                                    .map_or(usize::MAX, |next| next.char_start);
-                                let line_tac_table_count = composed
-                                    .tac_controls
-                                    .iter()
-                                    .filter(|(pos, _, ci)| {
-                                        (line_start..line_end).contains(pos)
-                                            && matches!(
-                                                p.controls.get(*ci),
-                                                Some(Control::Table(t))
-                                                    if t.common.treat_as_char
-                                            )
-                                    })
-                                    .count();
+                                // [#7150] 같은 줄에 여러 표가 있어도 저장 lh가 자기
+                                // 높이와 상하 여백의 합이면 자기 바깥여백에 앉힌다.
+                                // 동반 표는 위에서 한 번 선택한 줄별 앵커를 공유한다.
                                 let stored_lh_covers_om = (om_top > 0.0 || om_bottom > 0.0)
-                                    && line_tac_table_count <= 1
                                     && (table_h + om_top + om_bottom - 0.2
                                         ..=table_h + om_top + om_bottom + 0.2)
                                         .contains(&raw_lh);
                                 let table_y = if stored_lh_covers_om {
                                     y + om_top
+                                } else if let Some((owner_h, owner_om_top)) = line_table_owner {
+                                    // [#7150] 소유자가 `y + owner_om_top` 에 앉으면 그 상자
+                                    // 하단이 `기준선 + 0.15×owner_h` 이므로 공유 기준선은
+                                    // `y + owner_om_top + 0.85×owner_h` 다. 이 표를 거기에
+                                    // 앉히면 `y + owner_om_top + 0.85×(owner_h − table_h)`.
+                                    // 자기 여백이 들어가지 않는 것이 실측과 맞는다
+                                    // (#7049 의 `21_언어_기출`: 여백 283/283 과 0/0 인 두
+                                    // 상자를 한/글이 같은 y 에 놓는다).
+                                    //
+                                    // 저장 기준선을 쓰던 종전 식은 소유자의 om_top 을
+                                    // 잃어 줄 전체가 `0.85×(om_top+om_bottom) − om_top`
+                                    // 만큼 내려앉았다 — issue2470 1쪽 결재표 1.31px.
+                                    (y + owner_om_top + (owner_h - table_h) * 0.85).max(y)
                                 } else {
                                     // [#7049] 글자처럼 취급되는 표는 글자처럼 기준선에
                                     // 앉는다 — 높이의 85% 가 기준선 위, 15% 가 아래다.
