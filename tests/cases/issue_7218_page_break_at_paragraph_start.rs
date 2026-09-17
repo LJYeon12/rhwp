@@ -7,7 +7,7 @@
 //! 후속 좌표 편집이 어긋나지 않게 알린다.
 //!
 //! 범위: CLI `edit insert-page-break` 와 이를 호출하는 MCP `hwp_insert_page_break`.
-//! CLI 계약은 #7230에서 왔고, 아래 core_contract는 #7238의 코어 직접 호출 계약을 함께 보존한다.
+//! CLI 계약은 #7230에서 왔고, 아래 core_contract는 #7238의 저장 계약을 명시적 속성 setter에서 검증한다.
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::path::{Path, PathBuf};
@@ -191,33 +191,39 @@ fn issue_7218_mid_paragraph_offset_still_splits() {
     let _ = std::fs::remove_file(&out);
 }
 
+#[test]
+fn issue_7218_cli_section_start_sets_explicit_break_and_keeps_section_properties() {
+    let src = Path::new("samples/issue7218/outline_headings.hwpx");
+    let before = paragraphs(src);
+    let (out, envelope) = page_break(src, 0, 0, "section-start");
+    let mut archive =
+        zip::ZipArchive::new(std::io::Cursor::new(std::fs::read(&out).unwrap())).unwrap();
+    let mut xml = String::new();
+    std::io::Read::read_to_string(
+        &mut archive.by_name("Contents/section0.xml").unwrap(),
+        &mut xml,
+    )
+    .unwrap();
+    let first = xml
+        .split("<hp:p ")
+        .nth(1)
+        .unwrap()
+        .split('>')
+        .next()
+        .unwrap();
+    assert!(first.contains("pageBreak=\"1\""));
+    assert!(xml.contains("<hp:secPr"));
+    assert_eq!(paragraphs(&out).len(), before.len());
+    assert_eq!(envelope["paragraphDelta"], 0);
+    assert_eq!(envelope["pageBreakParagraph"], 0);
+    std::fs::remove_file(out).unwrap();
+}
+
 // #7238의 독립 코어 계약을 CLI 검사와 함께 보존한다.
 mod core_contract {
-    //! [Issue #7218] `insert-page-break` 를 문단 시작(offset 0)에 쓰면 빈 문단이 생긴다.
-    //!
-    //! `insert_page_break_native` 가 `char_offset` 과 관계없이 항상 `split_at(char_offset)`
-    //! 으로 문단을 갈랐다. `char_offset == 0` 이면 앞쪽이 원 문단의 ParaShape·스타일·개요
-    //! 수준을 그대로 물려받은 **빈 문단**으로 남는다. 개요 제목 앞에 쓰면 한/글이 그 빈
-    //! 문단에도 개요 번호를 매겨 항목 하나가 비어 보이고 뒤 번호가 밀린다. 문단 수도 늘어
-    //! 이후 문단 좌표로 편집하면 한 칸씩 어긋났다.
-    //!
-    //! # 기대값의 출처
-    //!
-    //! HWPX `hp:p/@pageBreak` 와 HWP5 문단 헤더 break 비트(0x04)는 *그 문단 앞에서* 쪽을
-    //! 넘기라는 **break-before** 속성이다(`parser/hwpx/section.rs` 스펙 표 59 주석). 따라서
-    //! "문단 P 앞에 쪽 나눔" 의 결과는 P 자신이 그 속성을 갖는 것이고 새 문단은 필요 없다.
-    //!
-    //! 저장소 정본 HWPX 85개 전수 실측도 같은 말을 한다 — `pageBreak="1"` 문단 712개 중
-    //! **664개(93%)가 글자를 가진 내용 문단**이다. 한/글은 이 속성을 빈 문단에 따로 붙이지
-    //! 않고 내용 문단에 붙인다.
-    //!
-    //! # 이 시험이 잠그는 것
-    //!
-    //! 1. offset 0 에서 문단 수가 변하지 않고, 대상 문단이 텍스트·문단모양을 그대로 유지한 채
-    //!    `ColumnBreakType::Page` 를 갖는다.
-    //! 2. 다른 축의 break 비트(구역 0x01·다단 0x02)를 지우지 않는다 — bitwise 합성.
-    //! 3. 반복 호출해도 문단이 누적되지 않는다(멱등).
-    //! 4. **문단 중간 오프셋의 분할 동작은 그대로다** — 이 수정이 좁혀야 할 자리는 offset 0 뿐이다.
+    //! 속성 setter는 문단을 보존하며 break-before 저장 비트와 synthesized 표시를 갱신한다.
+    //! 사용자 BreakPage 명령은 별도 분할 계약이다. COM 11.0.0.9136에서 첫 문단 시작의
+    //! BreakPage는 빈 선행 문단과 새 쪽을 만들었다. 저장 속성의 의미만으로 명령을 바꾸지 않는다.
 
     #![cfg(not(target_arch = "wasm32"))]
 
@@ -256,7 +262,7 @@ mod core_contract {
         let before = paragraph_texts(&core);
         let before_shape = core.document().sections[0].paragraphs[HEADING_PARA].para_shape_id;
 
-        core.insert_page_break_native(0, HEADING_PARA, 0)
+        core.mark_page_break_at_paragraph_start_native(0, HEADING_PARA)
             .expect("쪽 나눔 삽입");
 
         let after = paragraph_texts(&core);
@@ -295,7 +301,7 @@ mod core_contract {
         // 구역 시작 문단의 저장 계약을 재현한다(구역 나누기 비트 0x01).
         core.document_mut().sections[0].paragraphs[0].raw_break_type = 0x01;
 
-        core.insert_page_break_native(0, 0, 0)
+        core.mark_page_break_at_paragraph_start_native(0, 0)
             .expect("쪽 나눔 삽입");
 
         let raw = core.document().sections[0].paragraphs[0].raw_break_type;
@@ -314,7 +320,7 @@ mod core_contract {
         let before = paragraph_texts(&core);
 
         for _ in 0..3 {
-            core.insert_page_break_native(0, HEADING_PARA, 0)
+            core.mark_page_break_at_paragraph_start_native(0, HEADING_PARA)
                 .expect("쪽 나눔 삽입");
         }
 
@@ -359,5 +365,63 @@ mod core_contract {
             ColumnBreakType::None,
             "앞 조각은 쪽 나눔을 갖지 않는다",
         );
+    }
+
+    #[test]
+    fn explicit_break_clears_synthesized_flag_and_survives_both_formats() {
+        let mut core = core();
+        let p = &mut core.document_mut().sections[0].paragraphs[HEADING_PARA];
+        p.column_type = ColumnBreakType::Page;
+        p.raw_break_type = 0;
+        p.page_break_synthesized = true;
+        assert!(core
+            .mark_page_break_at_paragraph_start_native(0, HEADING_PARA)
+            .unwrap());
+        assert!(!core
+            .mark_page_break_at_paragraph_start_native(0, HEADING_PARA)
+            .unwrap());
+        for bytes in [
+            rhwp::serializer::serialize_hwpx(core.document()).unwrap(),
+            rhwp::serializer::serialize_document(core.document()).unwrap(),
+        ] {
+            let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+            let p = &reopened.document().sections[0].paragraphs[HEADING_PARA];
+            assert_eq!(p.raw_break_type & 4, 4);
+            assert!(!p.page_break_synthesized);
+            assert_eq!(p.text, "Second");
+        }
+    }
+
+    #[test]
+    fn setting_break_preserves_all_other_raw_axes_through_hwp5_save() {
+        for axis in [0x01, 0x02, 0x08, 0x03] {
+            let mut core = core();
+            core.document_mut().sections[0].paragraphs[0].raw_break_type = axis;
+            core.mark_page_break_at_paragraph_start_native(0, 0)
+                .unwrap();
+            let bytes = rhwp::serializer::serialize_document(core.document()).unwrap();
+            let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+            assert_eq!(
+                reopened.document().sections[0].paragraphs[0].raw_break_type & (axis | 4),
+                axis | 4
+            );
+        }
+    }
+
+    #[test]
+    fn user_break_command_still_splits_at_start_and_repeats() {
+        let mut core = core();
+        let before = paragraph_texts(&core);
+        let result = core.insert_page_break_native(0, HEADING_PARA, 0).unwrap();
+        let cursor: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(cursor["paraIdx"], HEADING_PARA + 1);
+        assert_eq!(cursor["charOffset"], 0);
+        assert_eq!(paragraph_texts(&core).len(), before.len() + 1);
+        assert_eq!(paragraph_texts(&core)[HEADING_PARA], "");
+        assert_eq!(paragraph_texts(&core)[HEADING_PARA + 1], "Second");
+        core.insert_page_break_native(0, HEADING_PARA + 1, 0)
+            .unwrap();
+        assert_eq!(paragraph_texts(&core).len(), before.len() + 2);
+        assert_eq!(paragraph_texts(&core)[HEADING_PARA + 2], "Second");
     }
 }

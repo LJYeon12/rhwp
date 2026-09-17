@@ -21,3 +21,20 @@ last_verified: 2026-09-17
 ## 결과보고·다음 보정 조건
 
 [#7238 검토](archives/pr_7238_review.md) 및 [#7230 검토](archives/pr_7230_review.md)의 보류 조건을 따른다. 이번 회차는 테스트 충돌만 조정했으며 production 동작 보정은 하지 않았다. 단일 저장 속성 계약과 사용자 명령 의미를 정한 뒤 실제 제품 경계 입력 검증을 추가한다. 전체 회귀·원격 CI·push 완료를 주장하지 않는다.
+
+## 메인터너 보정 — 속성 설정과 편집 명령의 계약 구분
+
+### 분석
+
+실제 CLI 첫 문단의 성공 봉투와 저장 `pageBreak=0` 불일치, 다른 break 축 덮어쓰기와 synthesized 플래그를 확인했다. 반면 Studio Ctrl+Enter의 분할을 없애는 근거로 저장 속성 통계를 사용할 수는 없다. Windows 10 PowerShell→Python COM `11, 0, 0, 9136`에서 `First\r\nSecond` 입력 첫 문단 시작의 `BreakPage`를 실행했다. 실제 커서는 `(0,0,16)`(첫 문단 제어 슬롯 포함)에서 `(0,1,0)`으로 이동했고, 2문단/1쪽이 빈 선행 문단을 포함한 3문단/2쪽으로 바뀌었다. 추가 사례들은 기존 Hwp 프로세스가 있어 실행하지 않았다. 이 1건을 전체 경계의 한컴 검증으로 확대하지 않는다.
+
+### 수정·검증
+
+- `insert_page_break_native`는 base의 기존 분할 구현을 복원한다. Studio 명령 의미를 새로 바꾸지 않는다.
+- CLI/MCP의 `mark_page_break_at_paragraph_start_native`에 `raw_break_type |= 0x04`, synthesized 해제, reflow/vpos 재계산을 모은다. Section/다단/단 비트를 보존하며 동일 명시적 속성은 멱등이다.
+- 실제 CLI 첫 문단의 XML pageBreak/secPr 검사, HWPX/HWP5 저장·재열기, 다른 break 축, synthesized, Studio 분할/반복 회귀를 추가했다. 핵심 새 테스트 4개는 보정 전 4/4 FAIL, 보정 후 PASS. #7218 11개와 관련 focused 20개, 총 31/31 PASS(exit 0). 첫 focused 실행은 1개가 nextest LEAK로 표시됐으므로 통과 수만으로 해당 경고를 숨기지 않는다. 최종 전체 검증에서 재확인한다.
+- npm HwpCtrl `BreakPage`는 `breakAtCursor` → `break_at_cursor`라는 별도 경로다. 앞선 review의 모든 HwpCtrl이 insert_page_break_native를 소비한다는 설명은 정정 대상이다. 이 경로는 이번 보정으로 변경하지 않는다.
+
+### 결과보고
+
+위 수정과 focused 결과를 사용자에게 보고한 뒤 이 회차를 커밋한다. 최종 Native/fresh WASM 제품 경계·Visual Sweep과 전체 검증은 이 코드 commit 기준으로 진행한다. 아직 전체 회귀·최종 승인·remote push 완료가 아니다.
