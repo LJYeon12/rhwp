@@ -1642,9 +1642,10 @@ fn native_empty_topbottom_rewind_anchor_saved_para_y(
 /// reset 뒤 continuation까지 합산하므로, 일반 y cursor로 그리면 첫 fragment가
 /// 기존 각주 아래로 밀린다. typeset이 이 형상만 fragment scan으로 보낸 뒤, layout도
 /// 같은 anchor에서 첫 조각을 paint해야 페이지네이터/렌더러 좌표가 일치한다.
-fn native_hwp5_internal_reset_rowbreak_first_fragment_saved_top(
+pub(crate) fn native_hwp5_internal_reset_rowbreak_first_fragment_saved_top(
     native_hwp5_layout: bool,
     para: &Paragraph,
+    prev_para: Option<&Paragraph>,
     next_para: Option<&Paragraph>,
     table: &crate::model::table::Table,
     col_area: &LayoutRect,
@@ -1701,7 +1702,33 @@ fn native_hwp5_internal_reset_rowbreak_first_fragment_saved_top(
         return None;
     }
 
-    let top = col_area.y + hwpunit_to_px(host_seg.vertical_pos, dpi);
+    // [#7203] 앵커의 **저장 줄** vpos 가 아니라 **문단 상자 top** 에 건다.
+    //
+    // 자리차지 개체의 세로 기준은 문단 상단이고, 문단 간격(`spacing_before`)은 그 개체가
+    // 아니라 뒤따르는 **줄**에 붙는다. 저장 줄 vpos 는 그 간격을 이미 지난 자리라, 그대로
+    // 쓰면 조각이 간격만큼 아래로 내려간다. 같은 파일 계열의 그림 경로는 이미 이 규칙이다
+    // (`float_placement.rs` 의 `anchor_y = host_y - spacing_before`).
+    //
+    // 한/글 정본 실측(`pdf/hwpctl_API_v2.4-hwp-2020.pdf`, 자리차지 표 44곳): 표 윗변은
+    // `앞 문단 마지막 줄 바닥 + outer_margin_top` 한 값이며 앵커의 `spacing_before` 와
+    // 무관하다. 간격이 0 인 문단은 이 보정이 no-op 이므로 종전 좌표가 그대로 유지된다.
+    let leading_gap_hu = prev_para
+        .and_then(|prev| {
+            prev.line_segs
+                .iter()
+                .rev()
+                .find(|seg| {
+                    seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+                })
+                .map(|seg| {
+                    seg.vertical_pos
+                        .saturating_add(seg.line_height)
+                        .saturating_add(seg.line_spacing.max(0))
+                })
+        })
+        .map(|prev_bottom| host_seg.vertical_pos.saturating_sub(prev_bottom).max(0))
+        .unwrap_or(0);
+    let top = col_area.y + hwpunit_to_px(host_seg.vertical_pos - leading_gap_hu, dpi);
     let bottom = top + hwpunit_to_px(table.common.height as i32, dpi);
     (top >= col_area.y + col_area.height * 0.5 && bottom <= col_area.y + col_area.height + 0.5)
         .then_some(top)
@@ -8568,9 +8595,17 @@ impl LayoutEngine {
             if was_tac {
                 if let Some(para) = paragraphs.get(item_para) {
                     if let Some(seg) = para.line_segs.first() {
-                        if seg.line_spacing < 0 {
-                            // 표 시작 y와 시각적 높이 저장 (Percent 전환 시 비교용)
-                            let ps = styles.para_styles.get(para.para_shape_id as usize);
+                        let ps = styles.para_styles.get(para.para_shape_id as usize);
+                        if seg.line_spacing < 0
+                            && ps.is_some_and(|s| {
+                                matches!(
+                                    s.line_spacing_type,
+                                    crate::model::style::LineSpacingType::Fixed
+                                )
+                            })
+                        {
+                            // 고정 줄간격에서만 후속 줄의 개체 겹침을 해소한다.
+                            // Percent의 음수 간격은 문서가 의도한 줄 전진이다.
                             let sa = ps.map(|s| s.spacing_after).unwrap_or(0.0);
                             fix_table_start_y = y_offset
                                 - hwpunit_to_px(seg.line_height + seg.line_spacing, self.dpi)
@@ -12723,6 +12758,7 @@ impl LayoutEngine {
                         native_hwp5_internal_reset_rowbreak_first_fragment_saved_top(
                             self.profile.get().hwp5_stored_pagination_layout(),
                             para,
+                            para_index.checked_sub(1).and_then(|i| paragraphs.get(i)),
                             paragraphs.get(para_index + 1),
                             t,
                             col_area,
@@ -13307,6 +13343,7 @@ impl LayoutEngine {
                                     // 경로(skia/canvaskit)는 별도로 image.text_wrap 을 set 하므로 무관.
                                     text_wrap: Some(pic.common.text_wrap),
                                     external_path: pic.image_attr.external_path.clone(),
+                                    content_inset: utils::picture_content_inset(pic),
                                     ..ImageNode::new(bin_data_id, image_data)
                                 }),
                                 BoundingBox::new(

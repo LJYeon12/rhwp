@@ -213,6 +213,8 @@ struct BlockTableContinuationPreparedState {
     /// 다음 host의 양수 vpos rewind가 현재 RowBreak 표의 continuation source
     /// page를 가리키는지 여부. page-top reset은 표 종료이므로 포함하지 않는다.
     source_next_positive_rewind: bool,
+    /// Paint와 공유하는 저장 첫 조각 원점(단 위쪽 기준).
+    first_fragment_saved_offset: Option<f64>,
     /// Both stored fragment heights independently prove this whole-row boundary.
     source_cellbreak_row_end: Option<usize>,
     /// 고정 선언 높이보다 실측 내용이 크게 넘치는 native HWP5 RowBreak 표가 마지막
@@ -6089,6 +6091,43 @@ fn spacing_trim_restorable(paragraphs: &[Paragraph], para_idx: usize) -> bool {
         }
     }
     false
+}
+
+/// [#7196] 다음 문단 경계가 `#6031` 철회(dirty)에 걸려 트림 복원이 막히는가.
+///
+/// `#2279 ①` 트림은 다음 저장 anchor 의 vpos-snap 이 좌표를 되돌린다는 전제인데,
+/// HWPX 저장 레이아웃에서 다음 문단이 굵은 문단 위 간격(> 5px)을 가졌고 그 경계의 저장
+/// 사다리가 그 간격을 담지 않았으면(`stored_ladder_encodes_spacing_before` 거짓) `#6031` 이
+/// 그 스냅을 되돌리고 사다리를 dirty 로 만든다. 그러면 이 문단에서 깎은 문단 위 간격과
+/// 끝 줄 간격이 영영 복원되지 않아 조판이 렌더보다 짧게 센다 — 156760012 10쪽 첫 문단
+/// pi=66: 트림 52.3px(sb 26.7 + ls 25.6) 미복원, 쪽 말미 표가 본문 바닥 +18.3px 넘침.
+/// 판정식·게이트(`hwpx_stored_layout`, `!hwp3_layout`, sb > 5px)는 `#6031` 과 같게 둔다.
+fn next_boundary_reverts_spacing_trim(
+    hwpx_stored_non_hwp3: bool,
+    paragraphs: &[Paragraph],
+    styles: &ResolvedStyleSet,
+    para_idx: usize,
+    dpi: f64,
+) -> bool {
+    if !hwpx_stored_non_hwp3 {
+        return false;
+    }
+    let next_idx = para_idx + 1;
+    let Some(next) = paragraphs.get(next_idx) else {
+        return false;
+    };
+    // `format_paragraph` 의 spacing_before 산출과 같은 축 — 저장 줄이 없는 텍스트 문단은 0.
+    let spacing_before_px = if next.line_segs.is_empty() && !next.text.is_empty() {
+        0.0
+    } else {
+        styles
+            .para_styles
+            .get(next.para_shape_id as usize)
+            .map(|style| style.spacing_before)
+            .unwrap_or(0.0)
+    };
+    spacing_before_px > 5.0
+        && !stored_ladder_encodes_spacing_before(paragraphs, next_idx, spacing_before_px, dpi)
 }
 
 /// [#2279 OMIT-eager] 저장 ladder 의 spacing-누락(OMIT) 서명 사전 판별.
@@ -18592,7 +18631,15 @@ impl TypesetEngine {
                 para,
                 st.col_count,
                 trim_spacing_before_for_flow,
-                st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                st.vpos_ladder_dirty
+                    || !spacing_trim_restorable(paragraphs, para_idx)
+                    || next_boundary_reverts_spacing_trim(
+                        st.profile.hwpx_stored_layout() && !st.profile.hwp3_layout(),
+                        paragraphs,
+                        styles,
+                        para_idx,
+                        self.dpi,
+                    ),
                 st.vpos_page_base.is_none() && st.vpos_lazy_base.is_some(),
             );
             if std::env::var("RHWP_DIAG_ADV").is_ok() {
@@ -18612,7 +18659,15 @@ impl TypesetEngine {
                     para,
                     st.col_count,
                     trim_spacing_before_for_flow,
-                    st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                    st.vpos_ladder_dirty
+                        || !spacing_trim_restorable(paragraphs, para_idx)
+                        || next_boundary_reverts_spacing_trim(
+                            st.profile.hwpx_stored_layout() && !st.profile.hwp3_layout(),
+                            paragraphs,
+                            styles,
+                            para_idx,
+                            self.dpi,
+                        ),
                     st.vpos_page_base.is_none() && st.vpos_lazy_base.is_some(),
                 );
             st.current_height += advance;
@@ -18676,7 +18731,15 @@ impl TypesetEngine {
                     para,
                     st.col_count,
                     trim_spacing_before_for_flow,
-                    st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                    st.vpos_ladder_dirty
+                        || !spacing_trim_restorable(paragraphs, para_idx)
+                        || next_boundary_reverts_spacing_trim(
+                            st.profile.hwpx_stored_layout() && !st.profile.hwp3_layout(),
+                            paragraphs,
+                            styles,
+                            para_idx,
+                            self.dpi,
+                        ),
                     false,
                 );
                 st.current_height += advance;
@@ -18833,7 +18896,15 @@ impl TypesetEngine {
                 para,
                 st.col_count,
                 trim_spacing_before_for_flow,
-                st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                st.vpos_ladder_dirty
+                    || !spacing_trim_restorable(paragraphs, para_idx)
+                    || next_boundary_reverts_spacing_trim(
+                        st.profile.hwpx_stored_layout() && !st.profile.hwp3_layout(),
+                        paragraphs,
+                        styles,
+                        para_idx,
+                        self.dpi,
+                    ),
                 false,
             );
             st.vpos_prev_trimmed_sb_px = trimmed_sb_gate
@@ -18841,7 +18912,15 @@ impl TypesetEngine {
                     para,
                     st.col_count,
                     trim_spacing_before_for_flow,
-                    st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                    st.vpos_ladder_dirty
+                        || !spacing_trim_restorable(paragraphs, para_idx)
+                        || next_boundary_reverts_spacing_trim(
+                            st.profile.hwpx_stored_layout() && !st.profile.hwp3_layout(),
+                            paragraphs,
+                            styles,
+                            para_idx,
+                            self.dpi,
+                        ),
                     false,
                 );
             st.current_height += advance;
@@ -20176,13 +20255,37 @@ impl TypesetEngine {
                 })
             })
             .flatten();
-        let height_for_fit = if has_tac {
+        // 실제 TAC 배치가 사용하는 소유 줄 상자는 바깥여백을 이미 포함한다.
+        // pre-flush에서 fmt와 여백을 다시 더하면 실제로 들어가는 표를 먼저 이월한다.
+        let owned_single_tac_frame =
+            (st.profile.hwpx_stored_layout() && tac_count == 1 && fmt.line_heights.len() == 1)
+                .then(|| {
+                    para.controls.iter().enumerate().find_map(|(ci, control)| {
+                        let Control::Table(table) = control else {
+                            return None;
+                        };
+                        crate::renderer::composer::owned_rowbreak_tac_height(para, ci).filter(
+                            |height| {
+                                i64::from(*height)
+                                    >= i64::from(table.common.height)
+                                        + i64::from(table.outer_margin_top)
+                                        + i64::from(table.outer_margin_bottom)
+                            },
+                        )
+                    })
+                })
+                .flatten()
+                .map(|height| hwpunit_to_px(height, self.dpi));
+        let height_for_fit = if let Some(height) = owned_single_tac_frame {
+            let base = height + fmt.spacing_before;
+            session_grown_tac_total.map_or(base, |grown| base.max(grown))
+        } else if has_tac {
             // 글자처럼 취급되는 표는 **바깥 여백(위·아래)까지 쪽 예산을 차지**한다.
             // 한컴 저장 lineseg 의 vertsize 가 `표 선언높이 + outMargin.top + outMargin.bottom`
             // 이다(본 문서 TAC 개체 18/18 일치, 2248+283+283=2814). 이 항이 빠져 쪽마다
             // 566 HU 씩 덜 쌓였고, 소제목 표가 앞 쪽 바닥에 남아 이후 쪽이 통째로 밀렸다.
-            // 🔴 줄 높이(`inline_control_*`) 자체에 더하면 흐름 좌표까지 이중 가산돼
-            //    조판이 크게 어긋난다(실측 82.3% → 54.0%). **수용 판정 값에만** 더한다.
+            // 소유 줄이 상하 여백까지 담는 경로는 위에서 한 번만 계상한다.
+            // 그 증거가 없는 저장 줄은 기존 수용 판정의 여백 보충을 유지한다.
             let tac_outer_margin_px: f64 = para
                 .controls
                 .iter()
@@ -22514,7 +22617,7 @@ impl TypesetEngine {
         // TAC 표: trailing line_spacing 복원 (Paginator place_table_fits:777-783 동일)
         // has_post_text는 tac_table_count와 무관하게 텍스트 줄 존재 여부만 확인
         let is_tac = self.is_effective_tac_table(para, table, fmt);
-        if is_tac && fmt.total_height > fmt.height_for_fit && !has_post_text {
+        if is_tac && !has_post_text {
             st.current_height += fmt.total_height - fmt.height_for_fit;
         }
         // [#2243 진단] 배치 종료 시 누적 — 동작 불변.
@@ -22523,9 +22626,9 @@ impl TypesetEngine {
                 "DIAG_TAC_END pi={} cur_h={:.1} trailing_fired={} has_post_text={} delta={:.1}",
                 para_idx,
                 st.current_height,
-                is_tac && fmt.total_height > fmt.height_for_fit && !has_post_text,
+                is_tac && !has_post_text,
                 has_post_text,
-                (fmt.total_height - fmt.height_for_fit).max(0.0),
+                fmt.total_height - fmt.height_for_fit,
             );
         }
         if strict_following_plain_text_fit && is_last_placed {
@@ -22763,7 +22866,15 @@ impl TypesetEngine {
                 next,
                 st.col_count,
                 trim_sb,
-                st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs_all, next_idx),
+                st.vpos_ladder_dirty
+                    || !spacing_trim_restorable(paragraphs_all, next_idx)
+                    || next_boundary_reverts_spacing_trim(
+                        st.profile.hwpx_stored_layout() && !st.profile.hwp3_layout(),
+                        paragraphs_all,
+                        styles,
+                        next_idx,
+                        self.dpi,
+                    ),
                 false,
             );
             st.prefilled_paras.insert(next_idx);
@@ -26902,6 +27013,18 @@ impl TypesetEngine {
                             - st.current_bottom_fixed_exclusion
                     }),
             source_next_positive_rewind: next_rewinds_after_table && !next_starts_new_page,
+            first_fragment_saved_offset: {
+                let column = st.inline_flow_column();
+                crate::renderer::layout::native_hwp5_internal_reset_rowbreak_first_fragment_saved_top(
+                    self.profile.get().hwp5_stored_pagination_layout(),
+                    para,
+                    para_idx.checked_sub(1).and_then(|i| paragraphs_all.get(i)),
+                    paragraphs_all.get(para_idx + 1),
+                    table,
+                    &column,
+                    self.dpi,
+                ).map(|top| top - column.y)
+            },
             source_cellbreak_row_end: (self.profile.get().hwp5_stored_pagination_layout()
                 && !self.profile.get().session_edited())
             .then(|| paragraphs_all.get(para_idx + 1))
@@ -27283,6 +27406,14 @@ impl TypesetEngine {
                     self.profile.get().hwp5_stored_pagination_layout(),
                     table,
                 ) && (is_continuation || st.current_height < 0.5);
+            // 저장된 첫 조각의 원점은 paint와 같은 값으로 예약한다.
+            // trailing trim으로 얻은 컷만 공유하고 이전 flow 원점을 유지하면
+            // 실제 표 상자와 페이지 예산이 서로 다른 높이를 소비한다.
+            if !is_continuation && cursor_row == 0 && start_cut.is_empty() {
+                if let Some(offset) = prepared.first_fragment_saved_offset {
+                    st.current_height = offset;
+                }
+            }
             let (host_before_overhead, fragment_outer_bottom_overhead) =
                 partial_rowbreak_fragment_spacing_px(
                     table,
@@ -30299,6 +30430,7 @@ mod tests {
             budget_para_start_height: 0.0,
             first_fragment_actual_footnote_boundary: None,
             source_next_positive_rewind: false,
+            first_fragment_saved_offset: None,
             source_cellbreak_row_end: None,
             relax_terminal_table_footnote_fit: false,
         };
