@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 3dfeec65f5e26710b834739401bcd17251327c21
+          ref: 03ba57cb804610e899a3e6e1ce2cb3cfcb21df6e
 
       # archive builder와 같은 30GB 임계치만 적용한다. 일반 ubuntu-latest의 충분한 여유에서는
       # Android/dotnet 삭제가 약 1분을 쓰므로 건너뛴다.
@@ -107,7 +107,7 @@ jobs:
       - name: Full native-feature library tests
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "3dfeec65f5e26710b834739401bcd17251327c21"
+          test "$(git rev-parse HEAD)" = "03ba57cb804610e899a3e6e1ce2cb3cfcb21df6e"
           test "${{ steps.native-skia-runtime.outputs.available }}" = "true"
           cargo test --locked --profile release-test --features native-skia --lib
           node scripts/rust-test-suite-manifest.mjs --check
