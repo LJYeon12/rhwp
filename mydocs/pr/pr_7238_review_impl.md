@@ -38,3 +38,9 @@ last_verified: 2026-09-17
 ### 결과보고
 
 위 수정과 focused 결과를 사용자에게 보고한 뒤 이 회차를 커밋한다. 최종 Native/fresh WASM 제품 경계·Visual Sweep과 전체 검증은 이 코드 commit 기준으로 진행한다. 아직 전체 회귀·최종 승인·remote push 완료가 아니다.
+
+## 실제 저장본 재검증
+
+보정된 CLI로 커밋 원본 `outline_headings.hwpx --para 3 --offset 0`을 다시 저장했다. 기존 after fixture와 달라진 ZIP member는 `Contents/section0.xml` 하나이며, 대상 제목과 뒤 본문의 LineSeg만 재배치된다. 문단 수·텍스트·pageBreak는 같다. 이 정확한 결과로 기존 `samples/issue7218/outline_headings_pagebreak_after_fix.hwpx`를 갱신하며 다른 이름의 복제 입력을 추가하지 않는다.
+
+`rhwp info --json`의 product는 hancom-office-2020. MCP engine 2020 start/status/download(2026-09-17, job `83ad9df7-756d-4b4b-800e-b6fc442282fd`, 9초 succeeded)로 해당 결과를 다시 PDF 변환했다. 2쪽 모두 기존 커밋 PDF와 144 DPI raster byte가 동일했다. 따라서 기존 기준 PDF를 그대로 재사용하며 신규 PDF 복제는 커밋하지 않는다. Native 실제 저장본 sweep에서도 2쪽/문단 텍스트 보존과 빈 개요 항목 제거를 확인했다. 남은 개요 번호 표시(1.Second 대 2. Second)는 기존 renderer 차이로 구분한다. fresh WASM 재캡처는 최종 검증에 포함한다.
