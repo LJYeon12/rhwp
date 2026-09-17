@@ -32,7 +32,7 @@ last_verified: 2026-09-17
 
 - `insert_page_break_native`는 base의 기존 분할 구현을 복원한다. Studio 명령 의미를 새로 바꾸지 않는다.
 - CLI/MCP의 `mark_page_break_at_paragraph_start_native`에 `raw_break_type |= 0x04`, synthesized 해제, reflow/vpos 재계산을 모은다. Section/다단/단 비트를 보존하며 동일 명시적 속성은 멱등이다.
-- 실제 CLI 첫 문단의 XML pageBreak/secPr 검사, HWPX/HWP5 저장·재열기, 다른 break 축, synthesized, Studio 분할/반복 회귀를 추가했다. 핵심 새 테스트 4개는 보정 전 4/4 FAIL, 보정 후 PASS. #7218 11개와 관련 focused 20개, 총 31/31 PASS(exit 0). 첫 focused 실행은 1개가 nextest LEAK로 표시됐으므로 통과 수만으로 해당 경고를 숨기지 않는다. 최종 전체 검증에서 재확인한다.
+- 실제 CLI 첫 문단의 XML pageBreak/secPr 검사, HWPX/HWP5 저장·재열기, 다른 break 축, synthesized, Studio 분할/반복 회귀를 추가했다. 핵심 새 테스트 4개는 보정 전 4/4 FAIL, 보정 후 PASS. #7218 11개와 관련 focused 20개, 총 31/31 PASS(exit 0). 첫 focused 실행은 1개가 nextest LEAK로 표시됐으므로 통과 수만으로 해당 경고를 숨기지 않는다. 최종 전체 nextest에서는 해당 검사가 PASS(0.021초), LEAK 없이 완료됐으며 전체 9,990 PASS/51 skipped(exit 0)를 확인했다.
 - npm HwpCtrl `BreakPage`는 `breakAtCursor` → `break_at_cursor`라는 별도 경로다. 앞선 review의 모든 HwpCtrl이 insert_page_break_native를 소비한다는 설명은 정정 대상이다. 이 경로는 이번 보정으로 변경하지 않는다.
 
 ### 결과보고

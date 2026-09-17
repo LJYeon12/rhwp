@@ -9,7 +9,7 @@ last_verified: 2026-09-17
 
 ## 최종 판정
 
-**승인** — scaffold 생성물의 CELL/1·IR/raw 일치, 한컴 PDF의 60행 보존, 짧은 표 무변화를 확인했다. 승인 범위는 생성·저장 계약이며 rhwp 전체 PDF 일치를 뜻하지 않는다. 통합 PR 전체 승인은 다른 PR의 보류 해소와 별개다.
+**승인** — scaffold 생성물의 CELL/1·IR/raw 일치, 한컴 PDF의 60행 보존, 짧은 표 무변화를 확인했다. 승인 범위는 생성·저장 계약이며 rhwp 전체 PDF 일치를 뜻하지 않는다. 다른 PR의 보류도 메인터너 보정과 공통 최종 검사로 해소했으며, 이 PR의 생성·저장 범위 승인을 유지한다.
 
 이 판정은 로컬 cherry-pick 통합 검토이며 GitHub APPROVE 제출·remote push·PR 생성·merge·issue close는 수행하지 않았다.
 
@@ -22,7 +22,7 @@ last_verified: 2026-09-17
 | base / state | devel / OPEN, non-draft |
 | 규모 | 13 files, +149/-3, 1 commit |
 | source head | `4041972c2576e7d53494dc1fa27339a08f9de95a` |
-| 적용 commit / 통합 code head | `e78d3a6cd` / `3127bcce945b00bf7c767df2fb9da1f67ebb3633` |
+| 적용 commit / 통합 code head | `e78d3a6cd` / `4d38c9a7b29dd87edf9228d668f4cb83928f6e87` |
 | 조회 상태 | MERGEABLE / CLEAN; merge 직전 재조회 필요 |
 
 - [Build & Test](https://github.com/edwardkim/rhwp/actions/runs/35198532771/job/105131317956): **SUCCESS**.
@@ -74,18 +74,18 @@ fidelity tall after p1→2 owner/sequence 후보 각 1개, visible excess 후보
 
 ### 입력 커밋 확인 — 충족
 
-아래 실제 실행 파일 모두 code head Git blob과 byte hash를 대조했다. 기존 원본/기준을 재사용했으며 별도 이름의 중복 입력은 추가하지 않았다. 신규 PR PDF는 한컴 변환 산출물을 그대로 사용했다. PDF format/Creator 버전 때문에 제외하거나 재변환하지 않았다.
+아래 실제 실행 파일 모두 최종 fixture head Git blob과 byte hash를 대조했다. 기존 원본/기준을 재사용했으며 별도 이름의 중복 입력은 추가하지 않았다. 신규 PR PDF는 한컴 변환 산출물을 그대로 사용했다. PDF format/Creator 버전 때문에 제외하거나 재변환하지 않았다.
 
 | 경로 / 역할 | SHA-256 | 확인 commit |
 | --- | --- | --- |
-| [samples/issue7216/tall_table_before.hwpx](../../../samples/issue7216/tall_table_before.hwpx) / 입력 | `82386dde2f8bc8b47a212fda9c623cf7094a6a1fb385be426e334f6990aa9df4` | `3127bcce9` |
-| [samples/issue7216/tall_table_before-2020.pdf](../../../samples/issue7216/tall_table_before-2020.pdf) / 한컴 기준 | `cccae1ac14b0c61a302b273cd9ba1ecac53675ead2ec6dfa49b79c62bb86d8f6` | `3127bcce9` |
-| [samples/issue7216/tall_table_after.hwpx](../../../samples/issue7216/tall_table_after.hwpx) / 입력 | `ba2ec290b1406476431c9be2421147d7c500f614138f94b5cde78a4158409f9f` | `3127bcce9` |
-| [samples/issue7216/tall_table_after-2020.pdf](../../../samples/issue7216/tall_table_after-2020.pdf) / 한컴 기준 | `9610f80615236c298575c34db74819a4407e330be4322aef0c504fb8d1913ca7` | `3127bcce9` |
-| [samples/issue7216/short_table_before.hwpx](../../../samples/issue7216/short_table_before.hwpx) / 입력 | `8a3f935463e5095ff28e8e939865ba1e505e492fe485fb8c67684a7613beb12b` | `3127bcce9` |
-| [samples/issue7216/short_table_before-2020.pdf](../../../samples/issue7216/short_table_before-2020.pdf) / 한컴 기준 | `f179ddb745dc08589d6b16f3c54931477e96dfc2af00f217b1d19c412538edd1` | `3127bcce9` |
-| [samples/issue7216/short_table_after.hwpx](../../../samples/issue7216/short_table_after.hwpx) / 입력 | `876bbe995ce2ee557fae43c873e1a3aa78208d966cda8ce69245826ff7e0864e` | `3127bcce9` |
-| [samples/issue7216/short_table_after-2020.pdf](../../../samples/issue7216/short_table_after-2020.pdf) / 한컴 기준 | `b541fa0aafc2bd402ea68b2fcb78066219363dcb018f0f17d877fe314e03f29c` | `3127bcce9` |
+| [samples/issue7216/tall_table_before.hwpx](../../../samples/issue7216/tall_table_before.hwpx) / 입력 | `82386dde2f8bc8b47a212fda9c623cf7094a6a1fb385be426e334f6990aa9df4` | `4d38c9a7b` |
+| [samples/issue7216/tall_table_before-2020.pdf](../../../samples/issue7216/tall_table_before-2020.pdf) / 한컴 기준 | `cccae1ac14b0c61a302b273cd9ba1ecac53675ead2ec6dfa49b79c62bb86d8f6` | `4d38c9a7b` |
+| [samples/issue7216/tall_table_after.hwpx](../../../samples/issue7216/tall_table_after.hwpx) / 입력 | `ba2ec290b1406476431c9be2421147d7c500f614138f94b5cde78a4158409f9f` | `4d38c9a7b` |
+| [samples/issue7216/tall_table_after-2020.pdf](../../../samples/issue7216/tall_table_after-2020.pdf) / 한컴 기준 | `9610f80615236c298575c34db74819a4407e330be4322aef0c504fb8d1913ca7` | `4d38c9a7b` |
+| [samples/issue7216/short_table_before.hwpx](../../../samples/issue7216/short_table_before.hwpx) / 입력 | `8a3f935463e5095ff28e8e939865ba1e505e492fe485fb8c67684a7613beb12b` | `4d38c9a7b` |
+| [samples/issue7216/short_table_before-2020.pdf](../../../samples/issue7216/short_table_before-2020.pdf) / 한컴 기준 | `f179ddb745dc08589d6b16f3c54931477e96dfc2af00f217b1d19c412538edd1` | `4d38c9a7b` |
+| [samples/issue7216/short_table_after.hwpx](../../../samples/issue7216/short_table_after.hwpx) / 입력 | `876bbe995ce2ee557fae43c873e1a3aa78208d966cda8ce69245826ff7e0864e` | `4d38c9a7b` |
+| [samples/issue7216/short_table_after-2020.pdf](../../../samples/issue7216/short_table_after-2020.pdf) / 한컴 기준 | `b541fa0aafc2bd402ea68b2fcb78066219363dcb018f0f17d877fe314e03f29c` | `4d38c9a7b` |
 
 ### 직접 확인한 PNG 증적
 
@@ -138,7 +138,7 @@ fidelity tall after p1→2 owner/sequence 후보 각 1개, visible excess 후보
 
 ## Merge 후 contributor PR comment 계획
 
-보류 PR은 해제·최종 CI·실제 merge가 완료된 뒤에만 게시한다. 한국어로 기여에 감사하고 실제 merge SHA·최종 head CI URL·수정 범위·실제 검증 범위·남은 차이를 설명한다. [Visual Sweep 정본](https://github.com/edwardkim/rhwp/blob/devel/mydocs/manual/verification/visual_sweep_guide.md#github-merge-comment)을 직접 연결한다.
+최종 승인·CI·실제 merge가 완료된 뒤에만 게시한다. 한국어로 기여에 감사하고 실제 merge SHA·최종 head CI URL·수정 범위·실제 검증 범위·남은 차이를 설명한다. [Visual Sweep 정본](https://github.com/edwardkim/rhwp/blob/devel/mydocs/manual/verification/visual_sweep_guide.md#github-merge-comment)을 직접 연결한다.
 
 - `https://raw.githubusercontent.com/edwardkim/rhwp/<merge-commit-sha>/mydocs/pr/assets/pr7233_review/tall_after_wasm_review_001.png`
 - `https://raw.githubusercontent.com/edwardkim/rhwp/<merge-commit-sha>/mydocs/pr/assets/pr7233_review/tall_after_wasm_overlay_001.png`
