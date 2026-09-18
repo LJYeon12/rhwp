@@ -1040,7 +1040,15 @@ impl SkiaLayerRenderer {
                                 let rendered = draw_image(
                                     &image.data,
                                     *bbox,
-                                    Some(image.fill_mode),
+                                    Some(
+                                        if image.fill_mode
+                                            == crate::model::style::ImageFillMode::None
+                                        {
+                                            crate::model::style::ImageFillMode::FitToSize
+                                        } else {
+                                            image.fill_mode
+                                        },
+                                    ),
                                     None,
                                     None,
                                     None,

@@ -291,6 +291,41 @@ enum CellComposedStore {
     Lazy(Vec<Option<ComposedParagraph>>),
 }
 
+/// [#6923] 저장 줄이 여러 개인 문단의 TAC 중첩 표가 **자기 줄**에 앉도록 하는 세로 델타.
+///
+/// 한/글이 저장한 사다리는 표를 소유한 줄을 따로 적는다(`148738070` p69:
+/// ls[0] 49113HU 글줄 · ls[1] 51229HU 표 밴드). 종전 렌더는 문단 첫 줄 좌표에 표를 앉혀
+/// 앞 글줄 위로 28.2px 올라왔다 — 정본은 그 둘을 34.8px 띄운다.
+///
+/// 조각/프레임 원점을 모르는 자리이므로 **이 조각의 첫 렌더 줄 기준 델타**만 돌려준다.
+/// 합성 lineseg(재조판 산출)나 단일 줄 문단, 소유 줄이 기준 줄보다 앞서는 경우는 `None`.
+fn stored_nested_table_line_offset_px(
+    para: &crate::model::paragraph::Paragraph,
+    control_index: usize,
+    start_line: usize,
+    dpi: f64,
+) -> Option<f64> {
+    use crate::model::paragraph::LineSeg;
+    if para.line_segs.len() < 2 {
+        return None;
+    }
+    if para
+        .line_segs
+        .iter()
+        .any(|seg| seg.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0)
+    {
+        return None;
+    }
+    let owner = crate::renderer::layout::control_line_seg_index(para, control_index)?;
+    let base = start_line.min(para.line_segs.len() - 1);
+    if owner <= base {
+        return None;
+    }
+    let delta = i64::from(para.line_segs.get(owner)?.vertical_pos)
+        - i64::from(para.line_segs.get(base)?.vertical_pos);
+    (delta > 0).then(|| crate::renderer::hwpunit_to_px(delta as i32, dpi))
+}
+
 impl CellComposedStore {
     fn get(
         &mut self,
@@ -454,6 +489,35 @@ fn block_cut_index(
     cells
         .iter()
         .position(|c| c.row == cell.row && c.col == cell.col)
+}
+
+/// [#7226] 이어받는 조각이 **같은 행 안에서** 재개하는 걸침 칸인가.
+///
+/// `RowCut`(= `start_cut`/`end_cut`)은 그 행의 `row_span == 1` 칸을 col 순서로만
+/// 색인한다(`single_row_cut_index`). 그래서 칸이 전부 걸침 칸인 행은 앞 조각이
+/// 그 행의 물리 밴드를 얼마나 소비했든 컷에 적을 자리가 없어 `start_cut` 이 빈
+/// 채로 다음 조각에 온다. 그 조각은 같은 칸을 **첫 유닛부터 다시 칠해** 두 조각이
+/// 같은 행을 소유하고 글자가 포개진다(1342000 edu 33쪽, `#6981` 잔여 축).
+///
+/// 앞 조각이 남긴 정확한 잔여 밴드(`start_row_height_override`)는 그 행에서
+/// 시작하는 걸침 칸에도 같은 뜻이다 — 소비 높이 = 선언 행 높이 − 잔여 밴드.
+/// 컷 부기가 성립하는 행(= `row_span == 1` 칸이 하나라도 있는 행)은 종전대로
+/// `start_cut` 이 소관하므로 건드리지 않는다.
+pub(crate) fn resumes_inside_own_start_row(
+    table: &crate::model::table::Table,
+    cell: &crate::model::table::Cell,
+    start_row: usize,
+    start_cut: &[usize],
+    start_row_height_override: Option<f64>,
+) -> bool {
+    start_row_height_override.is_some()
+        && start_cut.is_empty()
+        && cell.row_span > 1
+        && cell.row as usize == start_row
+        && !table
+            .cells
+            .iter()
+            .any(|c| c.row as usize == start_row && c.row_span == 1)
 }
 
 /// [#4128 추출] 행내 `row_span==1` 셀의 col 오름차순 컷 벡터 서수.
@@ -1085,8 +1149,17 @@ impl LayoutEngine {
             // 잡히지 않는다 — 그대로 두면 연속 조각이 병합 셀 내용을 처음부터
             // 재렌더한다(10857 p9: 밴드 라벨 '10·사무분장 조정' 중복, 한글은 빈
             // 칸). 컷이 있는 쪽 경계는 종전대로 cell_cut_window 가 소관한다.
-            let straddle_start_uncovered =
-                straddles_fragment_start && (!is_block_split || start_cut.is_empty());
+            let straddle_start_uncovered = (straddles_fragment_start
+                && (!is_block_split || start_cut.is_empty()))
+                // [#7226] 컷에 적을 자리가 없어 빈 `start_cut` 으로 재개한 걸침 전용
+                // 행 — 앞 조각이 소비한 밴드만큼 유닛 컷을 이어 중복 렌더를 막는다.
+                || resumes_inside_own_start_row(
+                    table,
+                    cell,
+                    start_row,
+                    start_cut,
+                    start_row_height_override,
+                );
             let straddle_end_uncovered =
                 straddles_fragment_end && (!is_block_split || end_cut.is_empty());
             // CellBreak 표의 경계 straddle rowspan 셀도 같은 기전으로 중복된다
@@ -1792,32 +1865,50 @@ impl LayoutEngine {
                     }
                 }
             }
-            let preserve_linear_single_cell_vpos = cut_units.is_some_and(|(su, _)| su == 0)
-                && matches!(
-                    table.page_break,
-                    crate::model::table::TablePageBreak::RowBreak
-                )
-                && !table.common.treat_as_char
+            let linear_single_cell = matches!(
+                table.page_break,
+                crate::model::table::TablePageBreak::RowBreak
+            ) && !table.common.treat_as_char
                 && table.row_count == 1
-                && table.col_count == 1
-                // [#5995] 셀 내부 vpos 사다리는 셀 콘텐츠 기준 좌표라 표 자신의
-                // 세로 오프셋과 무관하다. 저자가 남긴 미세 오프셋(30269 문단
-                // 0.136: -98HU = -0.03mm)이 `== 0` 판정으로 사다리 스냅 전체를
-                // 끄면, 27개 문단이 재흐름돼 중첩 표 위는 압축되고 아래엔 없는
-                // 빈 띠가 생긴다(한글 2020 대비 +11mm). 반 mm 미만은 배치 의도가
-                // 아니라 잔여값으로 보고 스냅을 유지한다. 이 분기는 한컴 계산의
-                // 권위 입력 주장이 아니라 기존 저장-배치 호환 경로(c7dbe8a2c)의
-                // 형상 완화다 — compute 모델이 이 형상을 담기 전까지의 compat.
-                && (table.common.vertical_offset as i32).unsigned_abs() <= 141;
+                && table.col_count == 1;
+            // A continuation beginning at an accepted stored frame reset still
+            // owns that frame's initial empty paragraph. The visible-line range
+            // may start later, so derive the origin from the source unit itself.
+            let resumed_stored_frame_origin = cut_units.and_then(|(su, _)| {
+                if su == 0
+                    || !linear_single_cell
+                    || !self.profile.get().hwp5_stored_pagination_layout()
+                    || cell
+                        .paragraphs
+                        .iter()
+                        .any(|para| para.stored_text_partition_is_dirty())
+                {
+                    return None;
+                }
+                self.stored_frame_origin_for_cut(cell, table, styles, su)
+            });
+            // First-fragment compatibility keeps its existing small-offset
+            // boundary. A stored continuation frame has an explicit source
+            // origin; the table's paragraph-relative offset does not change
+            // coordinates inside that cell frame.
+            let preserve_linear_single_cell_vpos = linear_single_cell
+                && ((cut_units.is_some_and(|(su, _)| su == 0)
+                    && (table.common.vertical_offset as i32).unsigned_abs() <= 141)
+                    || resumed_stored_frame_origin.is_some());
             let vpos_origin = if preserve_linear_single_cell_vpos {
-                cell.paragraphs
-                    .first()
-                    .and_then(|p| p.line_segs.first().map(|seg| seg.vertical_pos))
-                    .unwrap_or(0)
-                    .max(0)
+                resumed_stored_frame_origin.unwrap_or_else(|| {
+                    cell.paragraphs
+                        .first()
+                        .and_then(|p| p.line_segs.first().map(|seg| seg.vertical_pos))
+                        .unwrap_or(0)
+                        .max(0)
+                })
             } else {
                 0
             };
+            if preserve_linear_single_cell_vpos && resumed_stored_frame_origin.is_some() {
+                frag_vpos_origin = vpos_origin;
+            }
             // [#4149] windowed 프로브: 컷 창에 유닛이 없는 문단은 아래 skip 판정의
             // 네 조건(line_ranges·mixed·nested·non-inline)이 모두 창 유닛에서만
             // 유도되므로 전량 레이아웃에서도 반드시 skip 된다 — 순회 자체를 생략한다.
@@ -3022,9 +3113,33 @@ impl LayoutEngine {
                                         .flatten();
                                     let nested_y = if let Some(offset) = stored_square_offset {
                                         para_y_before_lines + hwpunit_to_px(offset, self.dpi)
+                                    } else if resumed_stored_frame_origin.is_some()
+                                        && nested_table.common.treat_as_char
+                                        && table_host_line_only_fragment
+                                    {
+                                        // A blank leading source line still owns its slot.
+                                        // Do not replace the stored object-line origin with
+                                        // the cell top merely because no text was painted.
+                                        para_y_before_lines
+                                            + stored_nested_table_line_offset_px(
+                                                para, ctrl_idx, start_line, self.dpi,
+                                            )
+                                            .unwrap_or(0.0)
                                     } else if has_preceding_text {
                                         if table_host_line_only_fragment {
+                                            // [#6653] 은 "표는 그 줄이 시작한 자리에 놓는다" 인데
+                                            // `para_y_before_lines` 는 **문단**의 시작이다.
+                                            // [#6923] 저장 사다리가 표를 별도 줄에 적어 둔 문단
+                                            // (148738070 p69: ls[0] 글줄 49113HU · ls[1] 표
+                                            // 51229HU)에서는 그 둘이 28.2px 다르고, 문단 시작에
+                                            // 앉히면 표가 앞 글줄 위로 올라온다(4쪽: 줄
+                                            // 735.0..753.7 위에 표 740.0 — 겹침 13건).
+                                            // 저장이 말하는 **그 줄**까지의 델타를 더한다.
                                             para_y_before_lines
+                                                + stored_nested_table_line_offset_px(
+                                                    para, ctrl_idx, start_line, self.dpi,
+                                                )
+                                                .unwrap_or(0.0)
                                         } else {
                                             para_y
                                         }
@@ -3037,7 +3152,53 @@ impl LayoutEngine {
                                     // 분할 표 내부에서는 composed 텍스트가 이전 줄까지 포함할 수
                                     // 있으므로, 표가 남은 폭에 들어가지 않으면 셀 좌측 기준으로
                                     // 배치해 페이지 오른쪽 밖으로 밀려나는 것을 막는다.
-                                    let tac_text_offset = if nested_table.common.treat_as_char {
+                                    // A resumed saved frame retains the owning line's
+                                    // horizontal origin too. Only text before this control
+                                    // on that line contributes; a following run is not a prefix.
+                                    let stored_owner_offset = if resumed_stored_frame_origin
+                                        .is_some()
+                                        && nested_table.common.treat_as_char
+                                        && matches!(
+                                            para_alignment,
+                                            Alignment::Left | Alignment::Justify
+                                        ) {
+                                        crate::renderer::layout::control_line_seg_index(
+                                            para, ctrl_idx,
+                                        )
+                                        .and_then(
+                                            |owner| {
+                                                let line = composed.lines.get(owner)?;
+                                                let position =
+                                                    *para.control_text_positions().get(ctrl_idx)?;
+                                                let mut remaining =
+                                                    position.saturating_sub(line.char_start);
+                                                let mut prefix_width = 0.0;
+                                                for run in &line.runs {
+                                                    let prefix: String =
+                                                        run.text.chars().take(remaining).collect();
+                                                    remaining = remaining
+                                                        .saturating_sub(prefix.chars().count());
+                                                    prefix_width += estimate_text_width(
+                                                        &prefix,
+                                                        &run.text_style(styles),
+                                                    );
+                                                }
+                                                Some(
+                                                    effective_margin_left_line(
+                                                        para_margin_left,
+                                                        para_indent,
+                                                        owner,
+                                                    ) + prefix_width,
+                                                )
+                                            },
+                                        )
+                                    } else {
+                                        None
+                                    };
+                                    let tac_text_offset = if let Some(offset) = stored_owner_offset
+                                    {
+                                        offset
+                                    } else if nested_table.common.treat_as_char {
                                         let mut text_w = 0.0;
                                         for line in &composed.lines {
                                             for run in &line.runs {

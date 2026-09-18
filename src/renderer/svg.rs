@@ -1925,6 +1925,7 @@ impl SvgRenderer {
                     bbox.x, bbox.y, bbox.width, bbox.height, data_uri,
                 ));
             }
+            // 쪽 배경 None은 기존 늘려 채우기 계약을 유지한다.
             ImageFillMode::Zoom => {
                 // [#6310] 칸/영역에 맞춰 종횡비를 지키며 축소(contain). TILE 원본 픽셀
                 // 배치가 아니다.
@@ -2156,11 +2157,30 @@ impl SvgRenderer {
         let fill_mode = img.fill_mode.unwrap_or(ImageFillMode::FitToSize);
 
         match fill_mode {
-            ImageFillMode::Zoom => {
-                self.output.push_str(&format!(
+            // [#7235] 채우기 유형 15(NONE): 한컴은 원래 픽셀 크기로 두지 않고 종횡비를
+            // 지켜 칸에 맞춘다(Zoom 과 같은 배치).
+            ImageFillMode::Zoom | ImageFillMode::None => {
+                // contain 비율은 최종적으로 보이는 crop 영역으로 계산한다.
+                // 맞춘 viewport 자체를 clip하여 잘려 나간 픽셀이 letterbox에 새지 않는다.
+                if let (Some(crop), Some((iw, ih))) =
+                    (img.crop, parse_image_dimensions(&render_data))
+                {
+                    let (iw, ih) = (iw as f64, ih as f64);
+                    let (sx, sy, sw, sh) =
+                        compute_image_crop_src(crop, img.original_size_hu, iw, ih);
+                    let scale = (bbox.width / sw).min(bbox.height / sh);
+                    let (w, h) = (sw * scale, sh * scale);
+                    self.output.push_str(&format!(
+                        "<svg x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\" preserveAspectRatio=\"none\" overflow=\"hidden\"><image width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\" href=\"{}\"/></svg>\n",
+                        bbox.x + (bbox.width - w) / 2.0, bbox.y + (bbox.height - h) / 2.0,
+                        w, h, sx, sy, sw, sh, iw, ih, data_uri,
+                    ));
+                } else {
+                    self.output.push_str(&format!(
                     "<image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"xMidYMid meet\" href=\"{}\"/>\n",
                     bbox.x, bbox.y, bbox.width, bbox.height, data_uri,
                 ));
+                }
             }
             ImageFillMode::FitToSize | ImageFillMode::Total => {
                 // 그림 자르기: crop이 있으면 원본 이미지의 일부만 표시
