@@ -73,6 +73,53 @@ struct ColumnItemCtx<'a> {
     >,
 }
 
+impl ColumnItemCtx<'_> {
+    /// A block TAC table and its visible text tail share one paragraph ending.
+    /// Use the emitted items, including other columns, rather than control order.
+    fn tac_text_tail_spacing_after(&self, para_index: usize) -> Option<f64> {
+        let para = self.paragraphs.get(para_index)?;
+        let comp = self.composed.get(para_index)?;
+        let spacing = self
+            .styles
+            .para_styles
+            .get(comp.para_style_id as usize)?
+            .spacing_after;
+        if spacing <= 0.0 {
+            return None;
+        }
+        let items = || {
+            self.page_content
+                .column_contents
+                .iter()
+                .flat_map(|column| &column.items)
+        };
+        items().any(|item| {
+            let PageItem::Table { para_index: owner, control_index } = item else {
+                return false;
+            };
+            if *owner != para_index
+                || !matches!(para.controls.get(*control_index), Some(Control::Table(t)) if t.common.treat_as_char)
+            {
+                return false;
+            }
+            let Some(table_line) = control_line_seg_index(para, *control_index) else {
+                return false;
+            };
+            items().any(|item| {
+                let PageItem::PartialParagraph { para_index: owner, start_line, end_line } = item else {
+                    return false;
+                };
+                *owner == para_index && *start_line > table_line
+                    && comp.lines.get(*start_line..*end_line).is_some_and(|lines| {
+                        lines.iter().any(|line| line.runs.iter().any(|run| {
+                            run.text.chars().any(|c| !c.is_whitespace() && c > '\u{001F}' && c != '\u{FFFC}')
+                        }))
+                    })
+            })
+        }).then_some(spacing)
+    }
+}
+
 pub(crate) const ENDNOTE_BETWEEN_NOTES_BASE_FLOW_HU: i32 = 1984;
 const SINGLE_ROW_DECLARED_TRUST_MAX_RATIO: f64 = 1.5;
 
@@ -6540,7 +6587,10 @@ impl LayoutEngine {
                     } else {
                         last_sig.is_some() && last_sig == cur_sig
                     };
-                    if same_visual && connects(last.10) && (y_start - last.4) < 30.0 {
+                    if same_visual
+                        && (last.10 == para_idx || connects(last.10))
+                        && (y_start - last.4) < 30.0
+                    {
                         last.4 = y_end;
                         last.6 = bottom_inset;
                         // 그룹의 partial_end 는 마지막 range 의 값으로 갱신.
@@ -7019,6 +7069,7 @@ impl LayoutEngine {
             .enumerate()
             .map(|(index, item)| (item.para_index(), index))
             .collect();
+        let mut deferred_paragraph_spacing = std::collections::HashMap::new();
         for (item_ordinal, item) in col_content.items.iter().enumerate() {
             // vpos 기반 y_offset 보정
             let item_para = match item {
@@ -7050,6 +7101,7 @@ impl LayoutEngine {
                         &mut col_node,
                         paper_images,
                         &mut para_start_y,
+                        &mut deferred_paragraph_spacing,
                         &mut para_float_lanes,
                         &mut visible_float_exclusions,
                         &mut para_inline_state,
@@ -8257,6 +8309,7 @@ impl LayoutEngine {
                 &mut col_node,
                 paper_images,
                 &mut para_start_y,
+                &mut deferred_paragraph_spacing,
                 &mut para_float_lanes,
                 &mut visible_float_exclusions,
                 &mut para_inline_state,
@@ -8525,6 +8578,9 @@ impl LayoutEngine {
             // Only the final item closes the paragraph. Following paragraphs,
             // including empty ones, consume their own line advances afterwards.
             if paragraph_last_items.get(&item_para) == Some(&item_ordinal) {
+                if let Some(spacing) = deferred_paragraph_spacing.remove(&item_para) {
+                    new_y += spacing;
+                }
                 let spacing_after = paragraphs
                     .get(item_para)
                     .and_then(|para| styles.para_styles.get(para.para_shape_id as usize))
@@ -9142,6 +9198,7 @@ impl LayoutEngine {
         col_node: &mut RenderNode,
         paper_images: &mut Vec<RenderNode>,
         para_start_y: &mut std::collections::HashMap<usize, f64>,
+        deferred_paragraph_spacing: &mut std::collections::HashMap<usize, f64>,
         para_float_lanes: &mut ParaFloatLanes,
         visible_float_exclusions: &mut Vec<VisibleFloatExclusion>,
         // [Task #1151 v9 결함 D] sibling TAC picture 가로 분배 cursor state.
@@ -9901,8 +9958,37 @@ impl LayoutEngine {
                             // 을 유지한다 — #677 의 이중 누적 방지는 정방향 델타
                             // 케이스에만 해당한다.
                             if seg.vertical_pos >= seg0.vertical_pos {
-                                para_top
-                                    + hwpunit_to_px(seg.vertical_pos - seg0.vertical_pos, self.dpi)
+                                // 표 다음 줄은 이미 측정·배치한 표의 흐름 끝을 기준으로
+                                // 저장 줄 사이의 간격만 이어받는다. 문단 시작에서 저장
+                                // vpos를 다시 적용하면 내용에 따라 커진 표 안으로 되감긴다.
+                                // 표와 같은 줄의 텍스트는 #677의 저장 앵커를 유지한다.
+                                let preceding_table_line = prev_tac_seg_applied
+                                    .then(|| {
+                                        para.controls.iter().enumerate().find_map(|(ci, c)| {
+                                            if !matches!(c, Control::Table(t) if t.common.treat_as_char)
+                                            {
+                                                return None;
+                                            }
+                                            let line = control_line_seg_index(para, ci)?;
+                                            (line + 1 == *start_line)
+                                                .then(|| para.line_segs.get(line))
+                                                .flatten()
+                                        })
+                                    })
+                                    .flatten();
+                                if let Some(host) = preceding_table_line {
+                                    let stored_end = i64::from(host.vertical_pos)
+                                        + i64::from(host.line_height)
+                                        + i64::from(host.line_spacing);
+                                    let gap = i64::from(seg.vertical_pos) - stored_end;
+                                    y_offset + gap as f64 * self.dpi / 7200.0
+                                } else {
+                                    para_top
+                                        + hwpunit_to_px(
+                                            seg.vertical_pos - seg0.vertical_pos,
+                                            self.dpi,
+                                        )
+                                }
                             } else {
                                 y_offset
                             }
@@ -9929,9 +10015,19 @@ impl LayoutEngine {
                         Some(bin_data_content),
                         ctx.wrap_anchors.get(para_index),
                     );
-                    // y_offset 누적: Table item 의 누적값 (표 바닥) 과 PP 자연 종료값
-                    // 중 최대로 갱신. 표 + 라인 영역의 시각 바닥을 후속 item 에 정확 전파.
-                    y_offset = y_offset.max(pp_y_out);
+                    // The last text fragment need not end the paragraph: another
+                    // object can follow it, or the table can extend below its text.
+                    // Remove the text's after-spacing before merging occupied flow;
+                    // the existing last-item owner adds it once after every item.
+                    let deferred_spacing = comp
+                        .as_ref()
+                        .filter(|c| *end_line >= c.lines.len())
+                        .and_then(|_| ctx.tac_text_tail_spacing_after(*para_index))
+                        .unwrap_or(0.0);
+                    if deferred_spacing > 0.0 {
+                        deferred_paragraph_spacing.insert(*para_index, deferred_spacing);
+                    }
+                    y_offset = y_offset.max(pp_y_out - deferred_spacing);
                 }
             }
             PageItem::Table {
@@ -12438,8 +12534,13 @@ impl LayoutEngine {
                 let ps_id = comp
                     .map(|c| c.para_style_id as usize)
                     .unwrap_or(para.para_shape_id as usize);
+                // A visible same-paragraph tail transfers after-spacing to the
+                // paragraph's last emitted item, not merely its last text fragment.
+                // Whitespace-only tails are skipped above and do not own completion.
                 if let Some(ps) = styles.para_styles.get(ps_id) {
-                    if ps.spacing_after > 0.0 {
+                    if ps.spacing_after > 0.0
+                        && ctx.tac_text_tail_spacing_after(para_index).is_none()
+                    {
                         y_offset += ps.spacing_after;
                     }
                 }
